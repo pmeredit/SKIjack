@@ -1,0 +1,10 @@
+⍝ The same interpreter with the fuel loop written out instead of
+⍝ generated: a written `loop` in the core overrides the generated one.
+term ≡ S ∣ K ∣ I ∣ App term term
+maybe ≡ Nothing ∣ Just term
+
+whnfF ≔ {
+  step m       = sp m nil stepS stepK stepI
+  loop1 f m n2 = step m (Just m) (f n2)
+  loop n m     = n Nothing (loop1 loop m)
+}

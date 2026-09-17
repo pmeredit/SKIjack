@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "skijack"
+version = "0.1.0"
+description = "A subject-oriented surface language over SKI: syntax and codegen"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["aviary-kernel>=0.1.0"]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[tool.setuptools.packages.find]
+include = ["skijack*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests"]

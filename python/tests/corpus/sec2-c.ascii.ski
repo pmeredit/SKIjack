@@ -1,0 +1,6 @@
+-- EXAMPLES.md section 2: a combinator three ways.
+C f x y = f y x               -- as an arm: a term, shared, applied at runtime
+flip f x y :=* f y x          -- as a macro: rewritten at the use site
+
+flipK1 x y = C K x y          -- uses the arm
+flipK2 x y = flip K x y       -- uses the macro

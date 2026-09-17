@@ -1,0 +1,3 @@
+⍝ EXAMPLES.md section 3: a macro over pairs.
+swap p ≔* [3⊑p 2⊑p]
+flipA q = swap q

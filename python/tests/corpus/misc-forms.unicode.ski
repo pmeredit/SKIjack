@@ -1,0 +1,14 @@
+⍝ Forms the EXAMPLES corpus does not exercise: signatures, wings,
+⍝ lambdas, the Tier 1 glyph names, deeper axes, a payload-carrying path,
+⍝ and the two arrows side by side: '→' is the signature arrow and
+⍝ '↦' the fact arrow (SYNTAX.md section 2).
+succ : nat → nat
+compose f g x = ∘ f g x
+dup w = ⋈ w
+fix g = Υ g
+same a b = ≟ a b
+deep c = 6⊑c
+lam h = λz.h z
+wing r = r.a.b
+peek s = ∵/vane/care[⟨K⟩]/desk s
+facts ≔ ⦃/a/b ↦ ⟨I⟩, /a/c ↦ ⟨K⟩⦄

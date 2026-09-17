@@ -1,0 +1,11 @@
+-- EXAMPLES.md section 1: numerals -- increment, decrement, addition,
+-- subtraction.  Numerals are Scott numerals, a declared type like any
+-- other.
+nat === Zero | Suc nat
+
+arith := {
+  inc n   = Suc n
+  dec n   = n |> { Zero  Zero ; Suc m  m }
+  add m n = n |> { Zero  m    ; Suc k  Suc (add m k) }
+  sub m n = n |> { Zero  m    ; Suc k  sub (dec m) k }
+}

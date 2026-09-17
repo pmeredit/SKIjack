@@ -1,0 +1,12 @@
+-- The paper's T3 pair: two interpreters over a five-constructor object
+-- type differing in one arm.  `step` and the fuel loop are generated for
+-- both cores; the outcome type is the first outcome-shaped declaration
+-- and the result type the last.
+term5 === S | K | I | App term5 term5 | Err
+outcome === Stepped term5 | Done | Errd
+result === RVal term5 | RErr | RTime
+
+omega = S I I (S I I)
+
+wf5Abs := { stepErr acc = Errd }
+wf5Omg := { stepErr acc = omega }
