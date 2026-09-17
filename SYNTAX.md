@@ -56,7 +56,7 @@ difference between the two interfaces.
 | case | `e ▹ { c₁ b₁ ; c₂ b₂ }` | `e |> { c1 b1 ; c2 b2 }` | one branch per constructor, in declaration order |
 | type declaration | `τ ≡ C₁ ∣ C₂ σ ρ ∣ …` | `t === C1 \| C2 s r \| ...` | constructors capitalized and followed by their field *types*; order is the ABI |
 | signature (optional) | `f : σ → τ` | `f : s -> t` | ignored by the expander; checked by the type stage (`DESIDERATA.md` item 11) |
-| core | `name ≔ { arms }` | `name := { arms }` | block of equations with implicit self; same in both lexicons |
+| core | `name params ≔ { arms }` | `name params := { arms }` | block of equations with implicit self; parameters after the name (a resolver, for an interpreter) are threaded to every arm and applied to the loop first; same in both lexicons |
 | composition (`B`) | `∘` | `B` | Tier 1 glyphs; the ASCII spelling is the name |
 | swap (`C`) | `⇄` | `C` | |
 | duplicate (`W`) | `⋈` | `W` | |
@@ -79,14 +79,18 @@ A two-fact resolver and a run under it, the paper's §6.3 example re-cast with t
 
 Unicode:
 ```
-resolve ≔ ⦃/k/two ↦ ⟨I⟩, /k/three ↦ ⟨K⟩⦄
-answer  ≔ wfN resolve ⊢ ⟨∵/k/three⟩₁₀
+seg  ≡ Nat ∣ Two ∣ Three
+path ≡ Nil ∣ Cons seg path
+resolve ≔ ⦃/nat/two ↦ ⟨I⟩, /nat/three ↦ ⟨K⟩⦄
+answer  ≔ wfN resolve ⊢ ⟨∵/nat/three⟩₁₀
 ```
 
 ASCII:
 ```
-resolve := ns{/k/two => <I>, /k/three => <K>}
-answer  := wfN resolve |- <?^/k/three>@10
+seg  === Nat | Two | Three
+path === Nil | Cons seg path
+resolve := ns{/nat/two => <I>, /nat/three => <K>}
+answer  := wfN resolve |- <?^/nat/three>@10
 ```
 
 A user interpreter with one added constructor, and a program run under
@@ -132,20 +136,21 @@ share a file with the declaration.
 
 ```
 program   := decl*
-decl      := type-decl | sig | arm | macro | core | def   -- arms may appear at top level
+decl      := type-decl | sig | arm | macro | core | def | run   -- arms may appear at top level
+run       := NAME '≔' [expr '⊢'] '⟨' expr '⟩' (SUB | '₍₎')   -- a level-1 declaration: quote and run,
+                                                              -- under the given interpreter or the default;
+                                                              -- ASCII: NAME := [expr |-] '<' expr '>' ('@' n | '@[]')
 type-decl := NAME '≡' ctor ('∣' ctor)*        -- ASCII: NAME === ctor (| ctor)*
 ctor      := CNAME TYPE*                        -- CNAME capitalized; fields are types
 sig       := NAME ':' TYPE ('→' TYPE)*         -- optional; ASCII ->
 arm       := NAME NAME* '=' expr             -- inside a core, or at top level
-core      := NAME '≔' '{' arm* '}'
+core      := NAME NAME* '≔' '{' arm* '}'        -- parameters after the name
 macro     := NAME NAME* '≔*' expr | NAME NAME* '≔!' expr
 expr      := app
 app       := atom+                           -- left-associative
 atom      := NAME | GLYPH | NUMBER | '(' expr ')'
            | '[' expr expr+ ']'              -- cell
-           | '⟨' expr '⟩'                    -- quote: a datum
-           | '⟨' expr '⟩' SUB                -- quote and run, default interpreter, fuel SUB
-           | expr '⊢' '⟨' expr '⟩' SUB       -- quote and run under the given interpreter
+           | '⟨' expr '⟩'                    -- quote: a datum (also allowed nested inside a quotation)
            | '∵' atom                        -- scry
            | NUMBER '⊑'                      -- axis pick (postfix on the number)
            | 'λ' NAME '.' expr
@@ -203,10 +208,19 @@ refused on anything else.
   chain lacks.
 - **Syntax.** The scry form takes a path literal or a path-typed
   expression: `∵/a/b/c` in Unicode, `?^/a/b/c` in ASCII, where `/`
-  separates segments and each segment is a tag with optional payload in
-  brackets, `∵/vane/care[⟨t⟩]/desk`. A namespace literal's keys are path
-  literals. `∵` applied to anything not of type `path` is a compile
-  error, not a runtime block.
+  separates segments. The program declares `seg` (the segment tags,
+  capitalized constructors, with a payload where a segment needs one)
+  and `path ≡ Nil ∣ Cons seg path`; a segment word in a literal denotes
+  the `seg` constructor whose name is that word with its first letter
+  capitalized, so `/nat/three` is `Cons Nat (Cons Three Nil)`, and an
+  unknown segment is an error. Inside a quotation the path is quoted
+  like any other datum, so a level-1 path is an encoded object term and
+  resolvers compare paths by `EQ5` on encodings, as the paper does. A
+  namespace literal's keys are path literals. `∵` applied to anything
+  not of type `path` is a compile error, not a runtime block; until the
+  type stage exists (`DESIDERATA.md` item 11, Stage B) only a path
+  *literal* is accepted, checked structurally, and a path-typed
+  expression is refused.
 - **Paths are still syntactic.** Equality of paths is structural
   equality of segment lists; nothing is normalized, which keeps the
   paper's argument about the word problem intact and keeps lookups

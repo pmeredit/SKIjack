@@ -172,37 +172,112 @@ compiles to the paper's 618-atom `whnfF` byte for byte, with every
 intermediate definition identical (`step` 569, `sp` 126, `rb` 74,
 `stepS` 237, `stepK` 105, `stepI` 92), and `whnfF 3 ⟨I K⟩` reaches weak
 head normal form in exactly 340 host contractions, decoding to
-`Just ⟨K⟩`. The `answer` line is not yet run: `⊢` and `⟨ ⟩` are step 4.
+`Just ⟨K⟩`. The `answer` line is measured too: it peels to `RVal` and
+decodes to `I` in 574 host contractions at fuel 5, and to `RVal` at fuel
+2 as well, since `K I Err` needs one contraction plus the no-redex
+check; fuel 1 gives `RTime`.
 
 ## 5. A value lookup
 
 Unicode:
 ```
-prog ≔ ⟨I ∵/k/three⟩₍₎
+seg  ≡ Nat ∣ Two ∣ Three
+path ≡ Nil ∣ Cons seg path
+resolve ≔ ⦃/nat/two ↦ ⟨I⟩, /nat/three ↦ ⟨K⟩⦄
+answer  ≔ wfN resolve ⊢ ⟨∵/nat/three⟩₁₀
 ```
 
 ASCII:
 ```
-prog := <I ?^/k/three>@[]
+seg  === Nat | Two | Three
+path === Nil | Cons seg path
+resolve := ns{/nat/two => <I>, /nat/three => <K>}
+answer  := wfN resolve |- <?^/nat/three>@10
 ```
 
-Inside `< >` the alphabet is the default interpreter's object type
-`{S, K, I, App, Scry}`; `/k/three` is a value of the path type, a list
-of two segment tags; `?^` wraps it in `Scry`. Fuel is elided, so the
-executable is `wfN E policy <prog>` with `E` the resolver the runtime
-supplied at boot, whose lookup arm dispatches on the head segment `k`
-through its mount table and hands `three` to the kernel's `peek`. The
-`I` arm fires; the walker finds `Scry` in head position and applies `E`
-to the path; `oJust <K>` splices and reduction continues to `<K>`;
-`oNothing` is a reported miss; `oNotYet` blocks, and the runtime re-runs
-from the top once the fact arrives, which is sound because the namespace
-is append-only. Not yet run in the surface; the mechanism is the paper's
-§6.2 and §6.3, which were.
+Inside `< >` the alphabet is `wfN`'s object type `{S, K, I, App, Scry}`;
+`/nat/three` is `Cons Nat (Cons Three Nil)`, a value of the declared path
+type, quoted like any other datum; `?^` wraps it in `Scry`. The
+namespace literal compiles to a resolver that compares the incoming path
+against each key with `EQ5` on the encodings, answering `OJust` for the
+first match and `ONotYet` otherwise. `wfN resolve` is the blocking loop
+applied to that resolver; the `I` arm fires, the walker finds `Scry` in
+head position and applies the resolver to the path, and `OJust <K>`
+splices and reduction continues to `<K>`. A path with no fact blocks,
+and the driver re-runs from the top once the fact is added, which is
+sound because the namespace is append-only.
 
-## 6. What was measured and what was not
+## 6. `whnfF` in SKIjack itself
+
+Two honest versions. The short one leaves the machinery to the compiler:
+
+```
+term === S | K | I | App term term
+maybe === Nothing | Just term
+whnfF := { step m = sp m nil stepS stepK stepI }
+```
+
+The long one is the same interpreter with nothing generated, every arm
+written in the surface. It is exactly the text the compiler emits for
+the short one (`render(generate(parse …))`), so the two are one program;
+the Unicode spelling differs only in `≡`, `∣`, and `≔`:
+
+```
+term === S | K | I | App term term
+maybe === Nothing | Just term
+whnfF := {
+  step m = sp m nil stepS stepK stepI
+  loop1 f m n2 = step m (Just m) (f n2)
+  loop n m = n Nothing (loop1 loop m)
+}
+resS acc c0 c1 c2 = c0 acc
+resK acc c0 c1 c2 = c1 acc
+resI acc c0 c1 c2 = c2 acc
+spApp f acc t u = f t (cons u acc)
+sp m acc = m (resS acc) (resK acc) (resI acc) (spApp sp acc)
+rb1 f h x xs = f (App h x) xs
+rb h args = args h (rb1 rb h)
+stepI1 x rest = Just (rb x rest)
+stepI args = args Nothing stepI1
+stepK2 x y rest = Just (rb x rest)
+stepK1 x r = r Nothing (stepK2 x)
+stepK args = args Nothing stepK1
+stepS3 x y z rest = Just (rb (App (App x z) (App y z)) rest)
+stepS2 x y r2 = r2 Nothing (stepS3 x y)
+stepS1 x r = r Nothing (stepS2 x)
+stepS args = args Nothing stepS1
+```
+
+Reading it top to bottom: `sp` walks a term to its head leaf, handing
+each leaf's continuation the accumulated argument list and pushing each
+application's argument onto that list; `rb` re-applies a list of
+arguments to a head; each `step` arm takes the argument list, returns
+`Nothing` when it has too few arguments (the head is in weak head normal
+form), and otherwise performs one contraction as data (`App (App x z)
+(App y z)` is the `S` rule) and rebuilds; `step` installs the three arms
+in the declaration order of the leaves; `loop` peels one `Suc` per
+attempt and returns `Nothing` at `Zero`; `loop1` runs a step and either
+returns the current term as the value or continues with the rebuilt one.
+`Y` ties `sp`, `rb`, and `loop`, each passing itself to its helper. Only
+`nil`, `cons`, `Zero`, `Suc`, and `Y` come from the prelude.
+
+**Measured.** The short program compiles to the paper's 618-atom `whnfF`
+byte for byte, with every one of these twenty definitions identical to
+the artifact's; `whnfF 3 <I K>` reaches weak head normal form in exactly
+340 host contractions. The long program is that compilation rendered
+back to source, and compiling it as plain user source with generation
+switched off gives the same 618-atom term byte for byte, with `sp`,
+`rb`, and the three arms each identical to the hand-written originals,
+and T0 at 340 (`python/tests/corpus/interp-whnff-written.*.ski`, both
+spellings). Parsing that file back gives the same tree as generating
+from the short source, so the two cannot drift apart.
+
+## 7. What was measured and what was not
 
 Measured, in this order, on the reference expander and reducer:
-sections 1 to 4 in full (section 4's `answer` line excepted). Section 5 describes the paper's verified
+sections 1 to 4 in full, and the level-1 line of section 3 (29,191
+contractions at fuel 41, `Nothing` at 40), T1 (91,556) and T2 (504,930)
+from surface source. Section 5 describes the paper's verified
 mechanism in the surface's notation and has not been compiled from that
-notation; quotation and the level-1 run are the next step, after which
-section 5 and section 4's `answer` become measured statements.
+notation; resolver-taking interpreters and the namespace literal are
+the next step, after which section 5 becomes a measured statement.

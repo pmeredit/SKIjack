@@ -207,3 +207,42 @@ def test_the_absorbing_arm_reports_a_crash_the_other_hides(built, oracle):
     assert _t3_run(e, oracle, "wf5Abs", ERR) == ("ERR", 127)
     tag, steps = _t3_run(e, oracle, "wf5Omg", ERR)
     assert tag == "CAP" and steps >= CAP
+
+
+# ------------------------------- the interpreter with nothing generated
+
+@pytest.mark.parametrize("lx", LEXICONS)
+def test_the_fully_written_interpreter_compiles_to_the_same_term(oracle, lx):
+    """`interp-whnff-written.*.ski` is exactly what
+    `render(generate(parse(interp-whnff)))` prints, kept as ordinary user
+    source.  Compiled with generation *off* it must give the same
+    618-atom term -- which is the claim that generate.py emits surface
+    syntax and adds no semantics of its own."""
+    e = expand_program(parse(source("interp-whnff-written", lx), lx),
+                       generate_forms=False)
+    assert e.size("whnfF") == 618
+    assert pretty(e.term("whnfF")) == pretty(oracle.term("whnfF"))
+
+
+def test_the_written_source_is_what_generation_prints():
+    """The corpus file is regenerated, not hand-copied: parsing it back
+    gives the same tree as generating from the short source."""
+    from skijack.generate import generate
+    from skijack.render import render
+    for lx in LEXICONS:
+        want = generate(parse(source("interp-whnff", lx), lx))
+        got = parse(source("interp-whnff-written", lx), lx)
+        assert got == want
+
+
+@pytest.mark.parametrize("lx", LEXICONS)
+def test_T0_on_the_fully_written_interpreter(built, oracle, lx):
+    """And it runs: the paper's T0, 340 contractions, from a program with
+    nothing generated at all."""
+    e = expand_program(parse(source("interp-whnff-written", lx), lx),
+                       generate_forms=False)
+    env = Environment()
+    inner = ap(e.term("whnfF"), oracle.natP(3), oracle.encP(App(I, K)))
+    r = fast_reduce(inner, env, whnf_only=True, max_steps=CAP)
+    assert r.status is Status.WHNF
+    assert r.steps == 340

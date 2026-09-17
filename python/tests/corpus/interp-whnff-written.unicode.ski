@@ -1,0 +1,28 @@
+⍝ The interpreter with nothing generated: this is exactly what
+⍝ `render_unicode(generate(parse(interp-whnff.unicode.ski)))` prints, kept
+⍝ as ordinary user source.  It compiles with `generate_forms=False` to the
+⍝ same 618-atom `whnfF`, which is the claim that generate.py emits
+⍝ surface syntax and adds no semantics of its own.
+term ≡ S ∣ K ∣ I ∣ App term term
+maybe ≡ Nothing ∣ Just term
+whnfF ≔ {
+  step m = sp m nil stepS stepK stepI
+  loop1 f m n2 = step m (Just m) (f n2)
+  loop n m = n Nothing (loop1 loop m)
+}
+resS acc c0 c1 c2 = c0 acc
+resK acc c0 c1 c2 = c1 acc
+resI acc c0 c1 c2 = c2 acc
+spApp f acc t u = f t (cons u acc)
+sp m acc = m (resS acc) (resK acc) (resI acc) (spApp sp acc)
+rb1 f h x xs = f (App h x) xs
+rb h args = args h (rb1 rb h)
+stepI1 x rest = Just (rb x rest)
+stepI args = args Nothing stepI1
+stepK2 x y rest = Just (rb x rest)
+stepK1 x r = r Nothing (stepK2 x)
+stepK args = args Nothing stepK1
+stepS3 x y z rest = Just (rb (App (App x z) (App y z)) rest)
+stepS2 x y r2 = r2 Nothing (stepS3 x y)
+stepS1 x r = r Nothing (stepS2 x)
+stepS args = args Nothing stepS1

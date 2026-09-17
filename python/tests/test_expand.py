@@ -9,6 +9,7 @@ import pytest
 
 from aviary_kernel.terms import pretty
 
+from skijack.check import CaseError, ScopeError
 from skijack.expand import ExpandError, axis_chain, expand_program
 from skijack.parser import parse, parse_ascii
 
@@ -144,7 +145,8 @@ def test_case_uses_declaration_order_not_source_order():
 
 
 def test_incomplete_case_is_refused():
-    with pytest.raises(ExpandError, match="missing branch"):
+    """Stage A check (b)."""
+    with pytest.raises(CaseError, match="missing branch"):
         expand_program(parse_ascii(
             "nat === Zero | Suc nat\nf n = n |> { Zero Zero }\n"))
 
@@ -175,7 +177,8 @@ def test_macro_substitution_avoids_capture():
 
 
 def test_unresolved_name_is_an_error():
-    with pytest.raises(ExpandError, match="unresolved name"):
+    """Stage A check (f)."""
+    with pytest.raises(ScopeError, match="unresolved name"):
         expand_program(parse_ascii("f x = x nowhere\n"))
 
 
@@ -189,9 +192,20 @@ def test_mutual_recursion_is_refused_explicitly():
             "}\n"))
 
 
-def test_quotation_is_out_of_scope_with_a_clear_message():
-    with pytest.raises(ExpandError, match="out of scope"):
+def test_quotation_without_an_object_type_is_refused():
+    """A quoted term is written in some interpreter's alphabet, so the
+    program must declare one (SURFACE-LANGUAGE-DESIGN.md section 6a)."""
+    with pytest.raises(ExpandError, match="quotation needs an object type"):
         expand_program(parse_ascii("p := <K>\n"))
+
+
+def test_quotation_inside_an_arm_body_is_still_refused():
+    """Step 4 packages quotation only at a top-level definition."""
+    with pytest.raises(ExpandError, match="out of scope"):
+        expand_program(parse_ascii(
+            "term === S | K | I | App term term\n"
+            "maybe === Nothing | Just term\n"
+            "f x = <K> x\n"))
 
 
 def test_an_arm_may_shadow_a_builtin_bird_name():

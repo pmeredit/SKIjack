@@ -19,3 +19,6 @@ include = ["skijack*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["tests"]
+markers = [
+  "slow: a tower-scale run (the paper's T2, ~500,000 host contractions)",
+]

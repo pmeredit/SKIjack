@@ -165,7 +165,15 @@ does not match.
 - The **dictionary is the ABI's public face.** Tier 1's table, with
   expansions, sizes, and hashes, is a versioned artifact, published with
   the language, and it is the same table the runtime's jets key on. A
-  change to it is a version change.
+  change to it is a version change. There is one table per declared
+  object type, not one table: `sp`, `rb`, and the default arms are
+  different terms at different arities, so a four-constructor
+  interpreter's entries and a five-constructor one's do not merge, and
+  the implementation refuses to merge them (`python/skijack/dictionary.py`).
+- **`EQ` is a standard-subject entry, not a kernel form.** The token
+  table names it and §5 builds rules around it, but nothing supplies it
+  until the standard subject exists; a program today defines its own
+  (`EQ5` in the corpus) and Stage A's data check keys on the name.
 - **Supercombinators are the unit of everything.** Sharing, jetting,
   lifting, and the census all operate on closed arms. The surface
   therefore makes arms the primary way to write code, with macros for

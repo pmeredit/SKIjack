@@ -1,0 +1,594 @@
+"""Stage A: the checker.
+
+``DESIDERATA.md`` item 11 -- "the checker is a pass that can reject and
+never rewrites, and the expander's output is the same whether checking
+is on or off".  Nothing here builds a term or touches the tree; it walks
+the parsed program and returns problems.
+
+The Stage A list, and where each lives below:
+
+======  ========================================  ====================
+item    check                                     error class
+======  ========================================  ====================
+(a)     constructor arity where a constructor
+        application denotes data                  :class:`ArityError`
+(b)     case completeness and declaration order   :class:`CaseError`
+(c)     data versus function at the positions
+        of ``SURFACE-LANGUAGE-DESIGN.md`` §5      :class:`DataError`
+(d)     the interpreter interface (§6c)           :class:`InterfaceError`
+(e)     the two symbol tables (§6b): a name inside
+        a quotation that names neither            :class:`SymbolTableError`
+(f)     unresolved names, duplicate declarations  :class:`ScopeError`
+======  ========================================  ====================
+
+Every problem found is collected; :func:`check` reports them **together**
+and raises the first one's class, so a caller may catch a specific check
+(``pytest.raises(ArityError)``) and still see the whole list.
+
+Two readings this pass takes, both stated in the README:
+
+* **Arity is checked where a constructor application denotes data** --
+  inside a quotation, a path literal and a namespace key.  At level 0 a
+  Scott constructor *is* a function of its fields and then of its
+  continuations, so ``Zero c0 c1`` is an ordinary case analysis and
+  neither over- nor under-application means anything there.  In a case
+  branch the parser already fixes the binder count at the arity.
+* **§5's data/function line refuses what it can prove is a function**,
+  not everything it cannot prove is data.  With no types, a binder's
+  kind is unknown until Stage B; an arm name, a bare combinator, a
+  lambda, a macro and a partially applied constructor are known
+  functions, and those are refused.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Sequence, Set, Tuple
+
+from aviary_kernel.birds import BY_NAME
+
+from . import ast as A
+from .generate import (GenerateError, find_object_type, find_path_type,
+                       is_interpreter_core, names_generation_adds)
+
+__all__ = [
+    "CheckError", "ArityError", "CaseError", "DataError", "InterfaceError",
+    "SymbolTableError", "ScopeError", "Problem", "check", "check_program",
+]
+
+
+class CheckError(Exception):
+    """Base of every Stage A rejection.  Carries ``.problems``."""
+    problems: Tuple["Problem", ...] = ()
+
+
+class ArityError(CheckError):
+    """(a) a constructor applied to the wrong number of fields as data."""
+
+
+class CaseError(CheckError):
+    """(b) a case form that is incomplete, repeated, or mixed-type."""
+
+
+class DataError(CheckError):
+    """(c) a function where §5 requires data."""
+
+
+class InterfaceError(CheckError):
+    """(d) an interpreter core that does not match the §6c interface."""
+
+
+class SymbolTableError(CheckError):
+    """(e) a name looked up in the wrong one of §6b's two tables."""
+
+
+class ScopeError(CheckError):
+    """(f) an unresolved name, or a name declared twice."""
+
+
+@dataclass(frozen=True)
+class Problem:
+    kind: type
+    where: str
+    message: str
+
+    def __str__(self) -> str:
+        return f"{self.kind.__name__} in {self.where}: {self.message}"
+
+
+_ISA = ("S", "K", "I")
+
+
+@dataclass
+class _Env:
+    types: Dict[str, A.TypeDecl] = field(default_factory=dict)
+    ctors: Dict[str, Tuple[str, int, int]] = field(default_factory=dict)
+    macros: Dict[str, A.Macro] = field(default_factory=dict)
+    arms: Dict[str, A.Arm] = field(default_factory=dict)        # top level
+    core_arms: Dict[str, Dict[str, A.Arm]] = field(default_factory=dict)
+    cores: Dict[str, A.Core] = field(default_factory=dict)
+    defs: Dict[str, A.Def] = field(default_factory=dict)
+    generated: Set[str] = field(default_factory=set)
+    core_generated: Dict[str, Set[str]] = field(default_factory=dict)
+    obj: Optional[object] = None
+    path: Optional[object] = None
+    prelude: Tuple[str, ...] = ()
+
+    def known(self, name: str, core: Optional[str]) -> bool:
+        if name in _ISA or name in BY_NAME or name in self.prelude:
+            return True
+        if core is not None:
+            if name in self.core_arms.get(core, ()):
+                return True
+            if name in self.core_generated.get(core, ()):
+                return True
+            if name in self.cores[core].params:
+                return True
+        return (name in self.ctors or name in self.arms or name in self.defs
+                or name in self.cores or name in self.generated
+                or name in self.macros)
+
+
+def _spine(e: A.Expr):
+    args = []
+    while isinstance(e, A.App):
+        args.append(e.arg)
+        e = e.fn
+    args.reverse()
+    return e, args
+
+
+class _Checker:
+    def __init__(self, program: A.Program, prelude: Sequence[str]):
+        self.program = program
+        self.problems: List[Problem] = []
+        self.env = _Env(prelude=tuple(prelude))
+        self._collect()
+
+    # ------------------------------------------------------------ collect
+
+    def add(self, kind, where, message):
+        self.problems.append(Problem(kind, where, message))
+
+    def _collect(self) -> None:
+        e = self.env
+        seen: Dict[str, str] = {}
+
+        def declare(name, what, where):
+            if name in seen:
+                self.add(ScopeError, where,
+                         f"{name!r} is declared twice (already a "
+                         f"{seen[name]})")
+            seen[name] = what
+
+        for d in self.program.decls:
+            if isinstance(d, A.TypeDecl):
+                declare(d.name, "type", f"type {d.name}")
+                if d.name in e.types:
+                    continue
+                e.types[d.name] = d
+                for i, c in enumerate(d.ctors):
+                    declare(c.name, "constructor", f"type {d.name}")
+                    e.ctors.setdefault(c.name, (d.name, i, len(c.fields)))
+            elif isinstance(d, A.Macro):
+                declare(d.name, "macro", f"macro {d.name}")
+                e.macros[d.name] = d
+            elif isinstance(d, A.Arm):
+                declare(d.name, "arm", f"arm {d.name}")
+                e.arms[d.name] = d
+            elif isinstance(d, A.Core):
+                declare(d.name, "core", f"core {d.name}")
+                e.cores[d.name] = d
+                inner: Dict[str, A.Arm] = {}
+                for arm in d.arms:
+                    if arm.name in inner:
+                        self.add(ScopeError, f"core {d.name}",
+                                 f"arm {arm.name!r} is defined twice")
+                    inner[arm.name] = arm
+                e.core_arms[d.name] = inner
+            elif isinstance(d, A.Def):
+                declare(d.name, "definition", f"definition {d.name}")
+                e.defs[d.name] = d
+        try:
+            e.obj = find_object_type(self.program)
+            e.path = find_path_type(self.program)
+            top, per_core = names_generation_adds(self.program)
+            e.generated = set(top)
+            e.core_generated = {k: set(v) for k, v in per_core.items()}
+        except GenerateError as ex:
+            self.add(InterfaceError, "the program", str(ex))
+
+    # ------------------------------------------------------------- walk
+
+    def run(self) -> List[Problem]:
+        for d in self.program.decls:
+            if isinstance(d, A.Arm):
+                self.expr(d.body, f"arm {d.name}", None, set(d.binders))
+            elif isinstance(d, A.Macro):
+                self.expr(d.body, f"macro {d.name}", None, set(d.params),
+                          macro=True)
+            elif isinstance(d, A.Core):
+                self.core(d)
+            elif isinstance(d, A.Def):
+                self.definition(d)
+        return self.problems
+
+    def core(self, d: A.Core) -> None:
+        bound = set(d.params)
+        for arm in d.arms:
+            self.expr(arm.body, f"core {d.name}, arm {arm.name}", d.name,
+                      bound | set(arm.binders))
+        if self.env.obj is not None and is_interpreter_core(d, self.env.obj):
+            self.interface(d)
+
+    def definition(self, d: A.Def) -> None:
+        where = f"definition {d.name}"
+        if isinstance(d.expr, A.NsLit):
+            for path, value in d.expr.facts:
+                self.path_literal(path, where)
+                if not (isinstance(value, A.Quote) and value.fuel is None
+                        and value.interp is None):
+                    self.add(DataError, where,
+                             "a namespace fact's value must be data (a "
+                             "quotation); §5 rule 3: a function cannot be "
+                             "stored as a fact")
+                else:
+                    self.quoted(value.expr, where)
+            return
+        if isinstance(d.expr, A.Quote):
+            self.quote(d.expr, where)
+            return
+        self.expr(d.expr, where, None, set())
+
+    # ---------------------------------------------------- expressions
+
+    def expr(self, e: A.Expr, where: str, core: Optional[str],
+             bound: Set[str], macro: bool = False) -> None:
+        if isinstance(e, A.Name):
+            self.name(e.name, where, core, bound, macro)
+            return
+        if isinstance(e, A.App):
+            head, args = _spine(e)
+            self.eq_position(head, args, where, core, bound)
+            self.expr(head, where, core, bound, macro)
+            for x in args:
+                self.expr(x, where, core, bound, macro)
+            return
+        if isinstance(e, A.Cell):
+            for x in e.items:
+                self.expr(x, where, core, bound, macro)
+            return
+        if isinstance(e, A.Pick):
+            self.expr(e.expr, where, core, bound, macro)
+            return
+        if isinstance(e, A.Lambda):
+            self.expr(e.body, where, core, bound | {e.param}, macro)
+            return
+        if isinstance(e, A.Case):
+            self.case(e, where, core, bound, macro)
+            return
+        if isinstance(e, A.Quote):
+            if e.interp is not None:
+                self.expr(e.interp, where, core, bound, macro)
+            self.quoted(e.expr, where)
+            return
+        if isinstance(e, A.Scry):
+            self.add(DataError, where,
+                     "'?^' is live only inside a quotation (§6: nothing at "
+                     "level 0 may use a scry)")
+            return
+        if isinstance(e, A.NsLit):
+            self.add(DataError, where,
+                     "a namespace literal is a resolver; it belongs on the "
+                     "right of a definition")
+            return
+
+    def name(self, nm: str, where: str, core: Optional[str], bound: Set[str],
+             macro: bool) -> None:
+        if nm in bound or macro:
+            return
+        if not self.env.known(nm, core):
+            self.add(ScopeError, where,
+                     f"unresolved name {nm!r}; free variables do not exist "
+                     f"at runtime (SYNTAX.md §8)")
+        # (e) has nothing to say at level 0: a declared type's
+        # constructors are ordinary Scott constructors there, whatever
+        # type they belong to.  The rebuilder *must* apply the object
+        # type's `App` to build encoded terms, exactly as `Suc` and
+        # `Just` are applied at level 0 everywhere else.  Only `S`, `K`
+        # and `I` are reserved, and they resolve to the ISA rather than
+        # being refused (SURFACE-LANGUAGE-DESIGN.md §6b).  The level-1
+        # half of the check is in `quoted` below.
+
+    def case(self, e: A.Case, where: str, core, bound, macro) -> None:
+        self.expr(e.scrutinee, where, core, bound, macro)
+        if not e.branches:
+            self.add(CaseError, where, "a case form needs at least one branch")
+            return
+        first = e.branches[0][0]
+        if first not in self.env.ctors:
+            self.add(CaseError, where,
+                     f"undeclared constructor {first!r} in a case branch")
+            return
+        tname = self.env.ctors[first][0]
+        decl = self.env.types[tname]
+        seen: Dict[str, Tuple[str, ...]] = {}
+        for cname, binders, body in e.branches:
+            if cname not in self.env.ctors:
+                self.add(CaseError, where,
+                         f"undeclared constructor {cname!r} in a case branch")
+                continue
+            if self.env.ctors[cname][0] != tname:
+                self.add(CaseError, where,
+                         f"branch {cname!r} is a constructor of "
+                         f"{self.env.ctors[cname][0]!r}, but the case is over "
+                         f"{tname!r}")
+                continue
+            if cname in seen:
+                self.add(CaseError, where, f"branch {cname!r} appears twice")
+            seen[cname] = binders
+            self.expr(body, where, core, bound | set(binders), macro)
+        missing = [c.name for c in decl.ctors if c.name not in seen]
+        if missing:
+            self.add(CaseError, where,
+                     f"case over {tname!r} is missing branch(es) for "
+                     f"{', '.join(missing)}; a case must be complete, and "
+                     f"the continuations are emitted in declaration order "
+                     f"(DESIDERATA.md item 11)")
+
+    # --------------------------------------------------- §5, position by position
+
+    def eq_position(self, head, args, where, core, bound) -> None:
+        """(c) the arguments of ``EQ`` must not be provably functions."""
+        if not (isinstance(head, A.Name) and head.name == "EQ"):
+            return
+        for i, x in enumerate(args[:2]):
+            why = self.provably_function(x, core, bound)
+            if why is not None:
+                self.add(DataError, where,
+                         f"argument {i + 1} of 'EQ' is {why}; §5 rule 3: a "
+                         f"value of function type cannot be compared")
+
+    def provably_function(self, e: A.Expr, core: Optional[str],
+                          bound: Set[str]) -> Optional[str]:
+        """What makes ``e`` a function, or ``None`` when Stage A cannot
+        tell.  Conservative on purpose: with no types a binder's kind is
+        unknown until Stage B."""
+        if isinstance(e, (A.Quote, A.Scry, A.Cell)):
+            return None
+        if isinstance(e, A.Lambda):
+            return "a lambda"
+        if isinstance(e, A.NsLit):
+            return "a resolver"
+        head, args = _spine(e)
+        if not isinstance(head, A.Name):
+            return None
+        nm = head.name
+        if nm in bound:
+            return None
+        if nm in _ISA or nm in BY_NAME:
+            return f"the combinator {nm!r}"
+        if nm in self.env.ctors:
+            arity = self.env.ctors[nm][2]
+            if len(args) < arity:
+                return (f"the constructor {nm!r} applied to {len(args)} of "
+                        f"its {arity} field(s), which is a function")
+            return None
+        if nm in self.env.macros:
+            return f"the macro {nm!r}"
+        if nm in self.env.arms and self.env.arms[nm].binders:
+            return f"the arm {nm!r}"
+        if core is not None and nm in self.env.core_arms.get(core, ()):
+            if self.env.core_arms[core][nm].binders:
+                return f"the arm {nm!r}"
+        if nm in self.env.cores:
+            return f"the core {nm!r}"
+        return None
+
+    # -------------------------------------------------------- quotation
+
+    def quote(self, q: A.Quote, where: str) -> None:
+        if q.interp is not None:
+            self.interp_application(q.interp, where)
+        self.quoted(q.expr, where)
+
+    def quoted(self, e: A.Expr, where: str) -> None:
+        """Inside ``< >``: §6b's level-1 table.  A name is a constructor
+        of the object type, or a level-0 name that is inlined and
+        quoted; anything else names neither table."""
+        obj = self.env.obj
+        if isinstance(e, A.Scry):
+            self.path_literal(e.path, where)
+            if obj is not None and not any(c.name == "Scry"
+                                           for c in obj.leaves):
+                self.add(SymbolTableError, where,
+                         f"'?^' needs a 'Scry' leaf in the object type "
+                         f"{obj.name!r}")
+            return
+        if isinstance(e, A.Quote):
+            if e.fuel is not None or e.interp is not None:
+                self.add(DataError, where,
+                         "a nested quotation is a datum and may not carry "
+                         "fuel or an interpreter")
+            self.quoted(e.expr, where)
+            return
+        if isinstance(e, A.NsLit):
+            self.add(DataError, where,
+                     "a namespace literal is a resolver, not a quotable term")
+            return
+        if isinstance(e, A.Lambda):
+            self.quoted(e.body, where)
+            return
+        if isinstance(e, A.Cell):
+            for x in e.items:
+                self.quoted(x, where)
+            return
+        if isinstance(e, A.Pick):
+            self.quoted(e.expr, where)
+            return
+        if isinstance(e, A.Case):
+            self.quoted(e.scrutinee, where)
+            for _c, _b, body in e.branches:
+                self.quoted(body, where)
+            return
+        head, args = _spine(e)
+        for x in args:
+            self.quoted(x, where)
+        if not isinstance(head, A.Name):
+            self.quoted(head, where)
+            return
+        nm = head.name
+        obj_names = set() if obj is None else {c.name for c in obj.decl.ctors}
+        if nm in obj_names:
+            return                       # the level-1 table
+        if self.env.known(nm, None):
+            # a level-0 name, inlined and quoted; if it is a constructor
+            # of some *other* declared type it must be saturated, because
+            # a partial application is a function (§5 rule 3)
+            if nm in self.env.ctors:
+                arity = self.env.ctors[nm][2]
+                if len(args) != arity:
+                    self.add(ArityError, where,
+                             f"constructor {nm!r} takes {arity} field(s) but "
+                             f"is given {len(args)} inside a quotation, where "
+                             f"it denotes data")
+            return
+        self.add(SymbolTableError, where,
+                 f"{nm!r} names neither table (§6b): it is not a constructor "
+                 f"of the object type"
+                 + (f" {obj.name!r}" if obj is not None else "")
+                 + " and not a level-0 name")
+
+    def path_literal(self, path: A.Path, where: str) -> None:
+        pt = self.env.path
+        if pt is None:
+            self.add(ScopeError, where,
+                     "a path literal needs the path type; declare "
+                     "'path === Nil | Cons seg path' (SYNTAX.md §6)")
+            return
+        for seg in path.segments:
+            if seg.payload is not None:
+                self.add(DataError, where,
+                         "a segment payload ('/vane/care[<t>]/desk') is not "
+                         "compiled yet; only path literals are accepted "
+                         "until Stage B (SYNTAX.md §6)")
+                continue
+            cname = seg.tag[:1].upper() + seg.tag[1:]
+            got = self.env.ctors.get(cname)
+            if got is None or got[0] != pt.seg:
+                self.add(ScopeError, where,
+                         f"path segment {seg.tag!r} names no constructor "
+                         f"{cname!r} of the segment type {pt.seg!r}")
+            elif got[2] != 0:
+                self.add(ArityError, where,
+                         f"path segment constructor {cname!r} carries "
+                         f"{got[2]} field(s); a segment tag is nullary")
+
+    # ----------------------------------------------- the §6c interface
+
+    def interp_application(self, interp: A.Expr, where: str) -> None:
+        head, args = _spine(interp)
+        if not isinstance(head, A.Name):
+            self.add(InterfaceError, where,
+                     "the interpreter left of '|-' must be a core, "
+                     "optionally applied to its parameters")
+            return
+        core = self.env.cores.get(head.name)
+        if core is None:
+            self.add(InterfaceError, where,
+                     f"{head.name!r} is not a core in this program")
+            return
+        if len(args) != len(core.params):
+            self.add(InterfaceError, where,
+                     f"core {head.name!r} takes {len(core.params)} "
+                     f"parameter(s) but is applied to {len(args)}; an "
+                     f"interpreter is applied to all of them before its fuel")
+
+    def interface(self, d: A.Core) -> None:
+        obj = self.env.obj
+        where = f"core {d.name}"
+        leaves = [c.name for c in obj.leaves]
+        for arm in d.arms:
+            if not arm.name.startswith("step") or arm.name == "step":
+                continue
+            rest = arm.name[4:]
+            if rest == obj.app.name:
+                self.add(InterfaceError, where,
+                         f"{arm.name!r}: the application constructor "
+                         f"{obj.app.name!r} has no step arm -- it is the "
+                         f"spine the walker descends, not a head that fires "
+                         f"(§6c)")
+        written = {arm.name: arm for arm in d.arms}
+        if "step" in written:
+            self.step_arm(written["step"], d, leaves, where)
+        if "loop" in written:
+            n = len(written["loop"].binders)
+            if n != 2:
+                self.add(InterfaceError, where,
+                         f"a written 'loop' takes the fuel and the term, two "
+                         f"binders after the core's parameters; this one has "
+                         f"{n}")
+        if "loop1" in written and "loop" not in written:
+            self.add(InterfaceError, where,
+                     "'loop1' is written but 'loop' is not; write both or "
+                     "neither")
+        if "loop1" in written and len(written["loop1"].binders) != 3:
+            self.add(InterfaceError, where,
+                     f"a written 'loop1' takes the loop, the term and the "
+                     f"remaining fuel, three binders after the core's "
+                     f"parameters; this one has "
+                     f"{len(written['loop1'].binders)}")
+
+    def step_arm(self, arm: A.Arm, d: A.Core, leaves, where) -> None:
+        if len(arm.binders) != 1:
+            self.add(InterfaceError, where,
+                     f"a written 'step' takes the term, one binder after the "
+                     f"core's parameters; this one has {len(arm.binders)}")
+            return
+        head, args = _spine(arm.body)
+        if not (isinstance(head, A.Name) and head.name == "sp"):
+            return                      # not the generated shape; leave it
+        if len(args) != 2 + len(leaves):
+            self.add(InterfaceError, where,
+                     f"'step' hands the walker {len(args) - 2} step arm(s) "
+                     f"but the object type has {len(leaves)} leaves "
+                     f"({', '.join(leaves)})")
+            return
+        got = []
+        for x in args[2:]:
+            h, _ = _spine(x)
+            got.append(h.name if isinstance(h, A.Name) else None)
+        want = ["step" + c for c in leaves]
+        if all(g is not None and g.startswith("step") for g in got) \
+                and sorted(got) == sorted(want) and got != want:
+            self.add(InterfaceError, where,
+                     f"'step' installs the leaf arms in the order "
+                     f"{', '.join(got)}, but the object type declares "
+                     f"{', '.join(leaves)}; declaration order is the ABI and "
+                     f"a wrong order is silent wrong semantics "
+                     f"(DESIDERATA.md item 11)")
+
+
+def check_program(program: A.Program, prelude: Sequence[str] = ()
+                  ) -> List[Problem]:
+    """Every Stage A problem in ``program``, in source order.  Never
+    raises for a program problem, and never rewrites anything."""
+    return _Checker(program, prelude).run()
+
+
+def check(program: A.Program, prelude: Sequence[str] = ()) -> None:
+    """Run Stage A and raise if anything is wrong.
+
+    The raised exception is the *first* problem's class, so a caller may
+    catch one check; its message lists every problem found, and
+    ``.problems`` carries them all.
+    """
+    problems = check_program(program, prelude)
+    if not problems:
+        return
+    lines = "\n".join("  " + str(p) for p in problems)
+    n = len(problems)
+    exc = problems[0].kind(
+        f"{n} Stage A problem{'s' if n > 1 else ''}:\n{lines}")
+    exc.problems = tuple(problems)
+    raise exc

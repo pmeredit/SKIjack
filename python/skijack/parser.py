@@ -219,19 +219,26 @@ class _Parser:
         return A.Sig(names[0], tuple(types))
 
     def core_or_def(self, names: List[str]) -> A.Decl:
+        # a core may take parameters: `wfQ e := { ... }`
+        if self.toks[self.i + len(names) + 1].kind == "LBRACE" or (
+                len(names) == 1
+                and self.toks[self.i + 1].kind == "ASSIGN"
+                and self.toks[self.i + 2].kind == "LBRACE"):
+            self._take_names(len(names))
+            self.expect("ASSIGN")
+            return self.core(names[0], tuple(names[1:]))
         if len(names) != 1:
             raise ParseError(
-                f"{names[0]!r}: ':=' takes no binders (write an arm with '=' "
-                f"or a macro with ':=*')")
+                f"{names[0]!r}: ':=' takes binders only for a core "
+                f"('name p := {{ arms }}'); write an arm with '=' or a macro "
+                f"with ':=*'")
         self._take_names(1)
         self.expect("ASSIGN")
-        if self.toks[self.i].kind == "LBRACE":   # decision (b)
-            return self.core(names[0])
         e = self.expr()
         self.end_of_decl()
         return A.Def(names[0], e)
 
-    def core(self, name: str) -> A.Core:
+    def core(self, name: str, params=()) -> A.Core:
         self.expect("LBRACE")
         arms: List[A.Arm] = []
         while True:
@@ -249,7 +256,7 @@ class _Parser:
                     f"'name binder* = body'")
             arms.append(self.arm(anames, also=("RBRACE",)))
         self.end_of_decl()
-        return A.Core(name, tuple(arms))
+        return A.Core(name, tuple(arms), tuple(params))
 
     def macro(self, names: List[str], capturing: bool) -> A.Macro:
         self._take_names(len(names))
@@ -376,6 +383,10 @@ class _Parser:
         self.expect("NSOPEN")
         self.depth += 1
         facts = []
+        if self.peek().kind == "RBRACE":     # the empty namespace
+            self.next()
+            self.depth -= 1
+            return A.NsLit(())
         while True:
             p = self.path()
             self.expect("MAPSTO")

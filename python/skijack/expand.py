@@ -31,16 +31,25 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
-from aviary_kernel.abstraction import expand as _ski_expand
+from aviary_kernel.abstraction import (bracket_abstract as _bracket_abstract,
+                                       expand as _ski_expand)
 from aviary_kernel.birds import BY_NAME
 from aviary_kernel.environment import Environment
 from aviary_kernel.terms import Atom, App as KApp, Term, pretty, size
 
 from . import ast as A
-from .generate import generate as _generate
+from .generate import (AnswerType, ObjectType, PathType, find_answer_type,
+                       find_loop_types, find_object_type, find_path_type,
+                       generate as _generate)
+from .check import check as _check
+from .quote import Encoder, level1_names
 
 __all__ = ["ExpandError", "Expansion", "expand_program", "PRELUDE_NAMES",
-           "ISA_NAMES"]
+           "ISA_NAMES", "Level1Program", "FUEL_PLACEHOLDER"]
+
+#: the free atom that stands in for elided fuel, ``<t>@[]`` -- the
+#: runtime's policy supplies the real numeral (``RUNTIME-DESIGN.md`` §3c)
+FUEL_PLACEHOLDER = Atom("\x00fuel")
 
 
 class ExpandError(Exception):
@@ -65,7 +74,7 @@ def K_(*terms: Term) -> Term:
 #: ``hd`` / ``tl`` are the Scott pair and its projections
 #: (``SURFACE-LANGUAGE-DESIGN.md`` §2); the rest are the aviary kernel's
 #: own built-ins, reached by name.
-PRELUDE_NAMES = ("pair", "hd", "tl", "nil", "cons")
+PRELUDE_NAMES = ("pair", "hd", "tl", "nil", "cons", "zero", "suc")
 
 #: the three primitives.  ``SURFACE-LANGUAGE-DESIGN.md`` §6b keeps two
 #: symbol tables: outside quotation these names are the ISA, inside it
@@ -331,6 +340,59 @@ def _lower_case(e: A.Case, ctors, types) -> A.Expr:
 # --------------------------------------------------- passes 4 and 5: codegen
 
 @dataclass
+class Level1Program:
+    """A ``name := I |- <t>@n`` declaration, packaged
+    (``SURFACE-LANGUAGE-DESIGN.md`` §6, "Level 1, virtualized").
+
+    The executable the host reduces is ``interp fuel datum``.  When the
+    fuel was elided (``@[]``) there is no closed term until the runtime's
+    policy supplies a numeral (``RUNTIME-DESIGN.md`` §3c); :attr:`term`
+    then raises and :meth:`with_fuel` builds it.
+    """
+    name: str
+    interp: str                      #: the interpreter core's name
+    interp_term: Term
+    datum: Term
+    fuel: object                     #: an ``int``, or :data:`ast.POLICY`
+    object_type: ObjectType
+    result_type: A.TypeDecl
+    zero: Term
+    suc: Term
+    params: Tuple[Term, ...] = ()   #: the interpreter core's arguments
+
+    def numeral(self, k: int) -> Term:
+        t = self.zero
+        for _ in range(k):
+            t = KApp(self.suc, t)
+        return t
+
+    def _apply(self, fuel: Term) -> Term:
+        t = self.interp_term
+        for p in self.params:          # the interpreter's own parameters
+            t = KApp(t, p)             # come before its fuel
+        return KApp(KApp(t, fuel), self.datum)
+
+    def with_fuel(self, k: int) -> Term:
+        """The closed executable at fuel ``k``."""
+        return self._apply(self.numeral(k))
+
+    @property
+    def placeholder(self) -> Term:
+        """The executable with :data:`FUEL_PLACEHOLDER` where the numeral
+        goes -- an open term, for inspection only."""
+        return self._apply(FUEL_PLACEHOLDER)
+
+    @property
+    def term(self) -> Term:
+        if not isinstance(self.fuel, int):
+            raise ExpandError(
+                f"{self.name!r} has elided fuel ('@[]'); it has no closed "
+                f"term until the runtime policy picks a budget -- use "
+                f"with_fuel(k), or run.run_policy()")
+        return self.with_fuel(self.fuel)
+
+
+@dataclass
 class Expansion:
     """The result of :func:`expand_program`."""
     terms: Dict[str, Term] = field(default_factory=dict)
@@ -340,6 +402,13 @@ class Expansion:
     env: Optional[Environment] = None
     types: Dict[str, A.TypeDecl] = field(default_factory=dict)
     ctors: Dict[str, Tuple[str, int, int]] = field(default_factory=dict)
+    level1: Dict[str, Level1Program] = field(default_factory=dict)
+    object_type: Optional[ObjectType] = None
+    answer_type: Optional[AnswerType] = None
+    path_type: Optional[PathType] = None
+    #: name -> the (key datum, answer datum) pairs of a namespace literal
+    namespaces: Dict[str, Tuple[Tuple[Term, Term], ...]] = field(
+        default_factory=dict)
 
     def term(self, name: str) -> Term:
         return self.terms[name]
@@ -429,17 +498,23 @@ def _mangle(name: str, used: Set[str]) -> str:
 # -------------------------------------------------------------- the driver
 
 def expand_program(program: A.Program, env: Optional[Environment] = None,
-                   generate_forms: bool = True) -> Expansion:
+                   generate_forms: bool = True, check: bool = True
+                   ) -> Expansion:
     """Compile a program to closed ``{S,K,I}`` terms, one per name.
 
-    With ``generate_forms`` (the default), :func:`skijack.generate.generate`
-    first adds the type-generated forms -- the walker, the rebuilder, the
-    default ISA step arms and each interpreter core's ``step`` and fuel
-    loop -- as surface declarations.
+    With ``check`` (the default), Stage A runs first, over the *parsed*
+    program and before generation; it can only reject
+    (``DESIDERATA.md`` item 11), so the output is the same whether
+    checking is on or off.  With ``generate_forms`` (the default),
+    :func:`skijack.generate.generate` then adds the type-generated forms
+    -- the walker, the rebuilder, the default ISA step arms and each
+    interpreter core's ``step`` and fuel loop -- as surface declarations.
     """
     if env is None:
         env = Environment()
     _counter["n"] = 0
+    if check:
+        _check(program, PRELUDE_NAMES)
     if generate_forms:
         program = _generate(program)
 
@@ -450,6 +525,7 @@ def expand_program(program: A.Program, env: Optional[Environment] = None,
     arms: List[Tuple[str, A.Arm, Optional[str]]] = []   # (name, arm, core)
     cores: Dict[str, A.Core] = {}
     defs: List[A.Def] = []
+    qdefs: List[A.Def] = []            # level-1: name := [I |-] <t>[@n]
     for d in program.decls:
         if isinstance(d, A.TypeDecl):
             if d.name in types:
@@ -475,9 +551,18 @@ def expand_program(program: A.Program, env: Optional[Environment] = None,
                     raise ExpandError(
                         f"core {d.name!r} defines arm {arm.name!r} twice")
                 seen_arm.add(arm.name)
-                arms.append((arm.name, arm, d.name))
+                # a core's parameters are prepended to every arm's binder
+                # list and are in scope in every arm body; references
+                # between arms stay raw, so the parameters are passed
+                # explicitly, which is the artifact's `stepScQ e` shape
+                arms.append((arm.name,
+                             A.Arm(arm.name, d.params + arm.binders, arm.body),
+                             d.name))
         elif isinstance(d, A.Def):
-            defs.append(d)
+            if isinstance(d.expr, (A.Quote, A.NsLit)):
+                qdefs.append(d)      # needs quotation: compiled in pass 6
+            else:
+                defs.append(d)
         else:
             raise ExpandError(f"unknown declaration {d!r}")
 
@@ -492,6 +577,10 @@ def expand_program(program: A.Program, env: Optional[Environment] = None,
     env.define_rule("tl", ("p",), K_(v("p"), K_(a("K"), a("I"))))
     env.define_rule("nil", ("n", "c"), v("n"))
     env.define_rule("cons", ("h", "t", "n", "c"), K_(v("c"), v("h"), v("t")))
+    # Scott numerals, the fuel convention (SURFACE-LANGUAGE-DESIGN.md §2
+    # and §4): a fuel numeral is what a generated loop peels.
+    env.define_rule("zero", ("z", "sc"), v("z"))
+    env.define_rule("suc", ("n", "z", "sc"), K_(v("sc"), v("n")))
 
     # --- backend names.  Program-level names (constructors, top-level
     # arms, definitions, the prelude) share one namespace; a core's arms
@@ -503,7 +592,7 @@ def expand_program(program: A.Program, env: Optional[Environment] = None,
     for name, _arm, core in arms:
         if core is None:
             source_names.append(name)
-    for d in defs:
+    for d in defs + qdefs:
         source_names.append(d.name)
     seen_source: Set[str] = set()
     for nm in source_names:
@@ -634,31 +723,291 @@ def expand_program(program: A.Program, env: Optional[Environment] = None,
     # --- pass 5: bracket abstraction
     out = Expansion(env=env, backend=dict(backend), types=dict(types),
                     ctors=dict(ctors))
-    names = list(dict.fromkeys(list(source_names) + list(PRELUDE_NAMES)))
-    for nm in names:
-        t = _ski_expand(a(backend[nm]), env)
-        out.terms[nm] = t
-        out.sizes[nm] = size(t)
-    # core arms are always reachable as "core.arm", and as the bare name
-    # when that name is unambiguous across the whole program
+    quoted_names = {d.name for d in qdefs}
+    names = [n for n in dict.fromkeys(list(source_names) + list(PRELUDE_NAMES))
+             if n not in quoted_names]
     bare_count: Dict[str, int] = {}
     for (core, name) in lowered:
         if core is not None:
             bare_count[name] = bare_count.get(name, 0) + 1
-    for (core, name), _arm in lowered.items():
-        if core is None:
-            continue
-        t = _ski_expand(a(arm_backend[(core, name)]), env)
-        out.terms[f"{core}.{name}"] = t
-        out.sizes[f"{core}.{name}"] = size(t)
-        if bare_count[name] == 1 and name not in out.terms:
-            out.terms[name] = t
-            out.sizes[name] = size(t)
-    # an interpreter core's name denotes its fuel loop
-    for cname in cores:
-        if (cname, "loop") in lowered:
-            out.terms[cname] = out.terms[f"{cname}.loop"]
-            out.sizes[cname] = out.sizes[f"{cname}.loop"]
-    for h in cg.helper_names:
-        out.helpers[h] = _ski_expand(a(h), env)
+
+    def expand_all() -> None:
+        """Expand every level-0 name.  Run again after pass 6, because a
+        level-0 arm may name a datum a quotation defines, and that alias
+        only exists once pass 6 has built it."""
+        for nm in names:
+            t = _ski_expand(a(backend[nm]), env)
+            out.terms[nm] = t
+            out.sizes[nm] = size(t)
+        # core arms are always reachable as "core.arm", and as the bare
+        # name when that name is unambiguous across the whole program
+        for (core_, name_) in lowered:
+            if core_ is None:
+                continue
+            t = _ski_expand(a(arm_backend[(core_, name_)]), env)
+            out.terms[f"{core_}.{name_}"] = t
+            out.sizes[f"{core_}.{name_}"] = size(t)
+            if bare_count[name_] == 1 and name_ not in quoted_names:
+                out.terms[name_] = t
+                out.sizes[name_] = size(t)
+        # an interpreter core's name denotes its fuel loop
+        for cname in cores:
+            if (cname, "loop") in lowered:
+                out.terms[cname] = out.terms[f"{cname}.loop"]
+                out.sizes[cname] = out.sizes[f"{cname}.loop"]
+        for h in cg.helper_names:
+            out.helpers[h] = _ski_expand(a(h), env)
+
+    expand_all()
+
+    # --- pass 6: quotation and level-1 packaging (§6a step 2, §6)
+    if qdefs:
+        obj = find_object_type(program)
+        if obj is None:
+            raise ExpandError(
+                "quotation needs an object type: declare the alphabet the "
+                "quoted term is written in, e.g. "
+                "'term === S | K | I | App term term'")
+        out.object_type = obj
+        lt = find_loop_types(program, obj)
+        out.answer_type = find_answer_type(program, obj, lt)
+        out.path_type = find_path_type(program)
+        enc = Encoder(obj, lambda n: out.terms[n])
+        leafmap = level1_names(obj)
+
+        def path_expr(path: A.Path, owner: str) -> A.Expr:
+            """``/nat/three`` is ``Cons Nat (Cons Three Nil)``: each
+            segment word names the ``seg`` constructor spelled with its
+            first letter capitalized (``SYNTAX.md`` §6, decision 33)."""
+            pt = out.path_type
+            if pt is None:
+                raise ExpandError(
+                    f"{owner!r}: a path literal needs the path type; declare "
+                    f"'path === Nil | Cons seg path' (SYNTAX.md §6)")
+            e: A.Expr = A.Name(pt.nil.name)
+            for seg in reversed(path.segments):
+                if seg.payload is not None:
+                    raise ExpandError(
+                        f"{owner!r}: a segment payload "
+                        f"('/vane/care[<t>]/desk') is not compiled yet")
+                cname = seg.tag[:1].upper() + seg.tag[1:]
+                if cname not in ctors or ctors[cname][0] != pt.seg:
+                    raise ExpandError(
+                        f"{owner!r}: path segment {seg.tag!r} names no "
+                        f"constructor {cname!r} of the segment type "
+                        f"{pt.seg!r}")
+                e = A.App(A.App(A.Name(pt.cons.name), A.Name(cname)), e)
+            return e
+
+        scry_leaf = next((c.name for c in obj.leaves if c.name == "Scry"), None)
+
+        def quote_expr(expr: A.Expr, owner: str) -> Term:
+            """Compile a quoted expression to its datum: level-0 codegen
+            with the object type's leaves admitted as atoms, then a
+            structural Scott encode (§6a, steps 1 and 2)."""
+            subs: Dict[str, Term] = {}
+
+            def strip(e: A.Expr) -> A.Expr:
+                """Replace each nested quotation by a placeholder name,
+                compiling it to its datum first."""
+                if isinstance(e, A.Quote):
+                    if e.fuel is not None or e.interp is not None:
+                        raise ExpandError(
+                            f"{owner!r}: a nested quotation is a datum and "
+                            f"may not carry fuel or an interpreter")
+                    nm = f"\x00quote:{len(subs)}"
+                    subs[nm] = quote_expr(e.expr, owner)
+                    return A.Name(nm)
+                if isinstance(e, A.App):
+                    return A.App(strip(e.fn), strip(e.arg))
+                if isinstance(e, A.Cell):
+                    return A.Cell(tuple(strip(x) for x in e.items))
+                if isinstance(e, A.Pick):
+                    return A.Pick(e.axis, strip(e.expr))
+                if isinstance(e, A.Lambda):
+                    return A.Lambda(e.param, strip(e.body))
+                if isinstance(e, A.Case):
+                    return A.Case(strip(e.scrutinee),
+                                  tuple((c, b, strip(x))
+                                        for c, b, x in e.branches))
+                if isinstance(e, A.Scry):
+                    # `?^/nat/three` is the object type's Scry leaf applied
+                    # to the quotation of the path term (§6a: the alphabet
+                    # inside < > is the interpreter's object type)
+                    if scry_leaf is None:
+                        raise ExpandError(
+                            f"{owner!r}: the object type {obj.name!r} has no "
+                            f"'Scry' leaf, so '?^' has nothing to build")
+                    return A.App(A.Name(scry_leaf),
+                                 strip(path_expr(e.path, owner)))
+                if isinstance(e, A.NsLit):
+                    raise ExpandError(
+                        f"{owner!r}: a namespace literal is a resolver, not "
+                        f"a quotable term")
+                return e
+
+            body = strip(expr)
+            body = expand_macros(body, macros)
+            body = lower(body, ctors, types)
+
+            def qresolve(nm: str) -> Optional[Term]:
+                if nm in subs:
+                    return a(nm)                  # a nested datum
+                if nm in leafmap:
+                    return a(leafmap[nm])         # the object type's leaf
+                return resolve(nm)                # inlined level-0 term
+
+            term = cg.with_resolver(qresolve).gen(body, [], owner)
+            term = _ski_expand(term, env)
+            if subs:
+                term = _splice(term, subs)
+            return enc.quote(term)
+
+        # 6a: every datum and resolver, in declaration order, each
+        # defined in the environment so later declarations can name it
+        packaged: List[Tuple[A.Def, Term]] = []
+        for d in qdefs:
+            if isinstance(d.expr, A.NsLit):
+                _compile_nslit(d, out, lt, quote_expr, path_expr, env,
+                               backend[d.name])
+                continue
+            q: A.Quote = d.expr
+            datum = quote_expr(q.expr, d.name)
+            if q.fuel is None and q.interp is None:
+                out.terms[d.name] = datum           # a datum, not run
+                out.sizes[d.name] = size(datum)
+                env.define_alias(backend[d.name], datum)
+                continue
+            packaged.append((d, datum))
+
+        # 6b: a level-0 arm may name one of those datums, so expand again
+        expand_all()
+
+        # 6c: package the level-1 executables
+        for d, datum in packaged:
+            q = d.expr
+            iname, iargs = _interp_spine(q.interp, cores, d.name)
+            if (iname, "loop") not in lowered:
+                raise ExpandError(
+                    f"{d.name!r}: {iname!r} is not an interpreter core (it "
+                    f"has no fuel loop)")
+            params: List[Term] = []
+            for arg in iargs:
+                body = lower(expand_macros(arg, macros), ctors, types)
+                params.append(cg.gen(body, [], d.name))
+            prog = Level1Program(
+                name=d.name, interp=iname, interp_term=out.terms[iname],
+                datum=datum, fuel=q.fuel if q.fuel is not None else A.POLICY,
+                object_type=obj, result_type=lt.result,
+                zero=out.terms["zero"], suc=out.terms["suc"],
+                params=tuple(_ski_expand(t, env) for t in params))
+            out.level1[d.name] = prog
+            if isinstance(prog.fuel, int):
+                out.terms[d.name] = prog.term
+                out.sizes[d.name] = size(prog.term)
     return out
+
+
+def _compile_nslit(d: A.Def, out: "Expansion", lt, quote_expr, path_expr,
+                   env: Environment, bname: str) -> None:
+    """``ns{/nat/two => <I>, /nat/three => <K>}`` is a resolver.
+
+    It compiles to ``scry_paths.py``'s ``make_path_oracle`` shape::
+
+        \\p. EQ5 p <k1> (OJust <a1>) (EQ5 p <k2> (OJust <a2>) ONotYet)
+
+    First structural match wins; no match answers "not yet".  A flat
+    chain, not a mount table: prefix routing (``SYNTAX.md`` §6) is later.
+    """
+    at = out.answer_type
+    if at is None:
+        raise ExpandError(
+            f"{d.name!r}: a namespace literal needs an oracle answer type; "
+            f"declare one, e.g. 'oanswer === OJust t | ONothing | ONotYet'")
+    if "EQ5" not in out.terms:
+        raise ExpandError(
+            f"{d.name!r}: a namespace literal compares paths with 'EQ5', "
+            f"which this program does not define")
+    facts: List[Tuple[Term, Term]] = []
+    for path, value in d.expr.facts:
+        if not (isinstance(value, A.Quote) and value.fuel is None
+                and value.interp is None):
+            raise ExpandError(
+                f"{d.name!r}: a fact's value must be a quotation, e.g. "
+                f"'/nat/two => <I>'; it is stored as data")
+        key = quote_expr(path_expr(path, d.name), d.name)
+        facts.append((key, quote_expr(value.expr, d.name)))
+    out.namespaces[d.name] = tuple(facts)
+    term = resolver_term(out.terms["EQ5"], out.terms[at.hit.name],
+                         out.terms[at.notyet.name], facts)
+    out.terms[d.name] = term
+    out.sizes[d.name] = size(term)
+    env.define_alias(bname, term)     # so later declarations can name it
+
+
+#: the binder a compiled resolver abstracts over
+_RESOLVER_BINDER = "\x00p"
+
+
+def resolver_term(eq: Term, hit: Term, notyet: Term, facts) -> Term:
+    """The closed resolver for a list of (key datum, answer datum) pairs.
+
+    Bracket abstraction is the kernel's, as everywhere else.
+    """
+    body: Term = notyet
+    for key, ans in reversed(list(facts)):
+        body = K_(eq, v(_RESOLVER_BINDER), key, KApp(hit, ans), body)
+    return _bracket_abstract(_RESOLVER_BINDER, body)
+
+
+def _interp_spine(interp: Optional[A.Expr], cores, owner: str):
+    """Which interpreter core runs a level-1 declaration, and with what
+    arguments.
+
+    ``I |- <t>@n`` names it; ``wfQ E |- <t>@n`` supplies its parameters,
+    which is how a resolver enters (``SURFACE-LANGUAGE-DESIGN.md`` §6:
+    the executable's arity is the interpreter's).  A bare ``<t>@n`` uses
+    the default, a core named ``whnfF``.
+    """
+    if interp is None:
+        if "whnfF" in cores:
+            return "whnfF", []
+        raise ExpandError(
+            f"{owner!r}: no interpreter given and no core named 'whnfF' to "
+            f"default to; write 'I |- <t>@n'")
+    head, args = _spine(interp)
+    if not isinstance(head, A.Name):
+        raise ExpandError(
+            f"{owner!r}: the interpreter left of '|-' must be a core, "
+            f"optionally applied to its parameters")
+    if head.name not in cores:
+        raise ExpandError(
+            f"{owner!r}: {head.name!r} is not a core in this program")
+    want = len(cores[head.name].params)
+    if len(args) != want:
+        raise ExpandError(
+            f"{owner!r}: core {head.name!r} takes {want} parameter(s) but "
+            f"got {len(args)}; an interpreter is applied to all of them "
+            f"before its fuel")
+    return head.name, args
+
+
+def _splice(term: Term, subs: Dict[str, Term]) -> Term:
+    """Replace placeholder atoms by their terms, iteratively (a level-2
+    datum is far deeper than the Python stack)."""
+    out: List[Term] = []
+    work: List[Tuple[Term, bool]] = [(term, False)]
+    while work:
+        x, done = work.pop()
+        if isinstance(x, Atom):
+            out.append(subs.get(x.name, x))
+            continue
+        if not done:
+            work.append((x, True))
+            work.append((x.arg, False))
+            work.append((x.fn, False))
+        else:
+            r = out.pop()
+            l = out.pop()
+            out.append(KApp(l, r))
+    return out.pop()

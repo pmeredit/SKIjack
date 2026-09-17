@@ -53,7 +53,13 @@ def dag_size(term):
 
 def fast_reduce(term, env, *, whnf_only=True, max_steps=10 ** 6,
                 max_size=10 ** 9) -> ReduceResult:
-    """``aviary_kernel.reduce.reduce`` with the size check sampled."""
+    """``aviary_kernel.reduce.reduce`` with the size check sampled.
+
+    ``max_size=None`` turns the guard off entirely.  Measuring rebuilds
+    the whole term, which is O(nodes) per sample; at tower scale that
+    costs more than the reduction it protects, and ``max_steps`` already
+    bounds the run.
+    """
     steps = 0
     stack = []
 
@@ -74,7 +80,7 @@ def fast_reduce(term, env, *, whnf_only=True, max_steps=10 ** 6,
                 break
             head, args, _ = contraction
             steps += 1
-            if steps % SIZE_CHECK_EVERY == 0:
+            if max_size is not None and steps % SIZE_CHECK_EVERY == 0:
                 if dag_size(full_term(head, args)) > max_size:
                     return ReduceResult(full_term(head, args), steps,
                                         Status.SIZE, [])

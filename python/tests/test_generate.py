@@ -74,9 +74,10 @@ def test_maybe_shape_is_one_type_serving_as_both():
     assert (lt.stepped.name, lt.done.name) == ("Just", "Nothing")
     assert (lt.value.name, lt.timeout.name) == ("Just", "Nothing")
     assert lt.o_rest == ()
+    assert lt.mapping == (("Nothing", "Just"),)
 
 
-def test_t3_shape_takes_the_first_as_outcome_and_the_last_as_result():
+def test_t3_shape_takes_the_last_two_outcome_shaped_declarations():
     p = parse_ascii(source("interp-t3", "ascii"))
     lt = find_loop_types(p, find_object_type(p))
     assert not lt.same
@@ -84,7 +85,7 @@ def test_t3_shape_takes_the_first_as_outcome_and_the_last_as_result():
     assert lt.stepped.name == "Stepped" and lt.done.name == "Done"
     assert [c.name for c in lt.o_rest] == ["Errd"]
     assert lt.value.name == "RVal" and lt.timeout.name == "RTime"
-    assert [c.name for c in lt.r_rest] == ["RErr", "RTime"]
+    assert lt.mapping == (("Done", "RVal"), ("Errd", "RErr"))
 
 
 def test_missing_outcome_type_is_refused():

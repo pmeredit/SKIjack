@@ -136,7 +136,8 @@ class _Renderer:
             return f"{head} {self.t['EQUALS']} {self.expr(d.body, 0)}"
         if isinstance(d, A.Core):
             arms = "\n".join("  " + self.decl(x) for x in d.arms)
-            return f"{self.name(d.name)} {self.t['ASSIGN']} {{\n{arms}\n}}"
+            head = " ".join([self.name(d.name)] + list(d.params))
+            return f"{head} {self.t['ASSIGN']} {{\n{arms}\n}}"
         if isinstance(d, A.Macro):
             op = self.t["CMACRO"] if d.capturing else self.t["MACRO"]
             head = " ".join([self.name(d.name)] + list(d.params))

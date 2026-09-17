@@ -33,9 +33,10 @@ from typing import Dict, List, Optional, Sequence, Set, Tuple
 from . import ast as A
 
 __all__ = [
-    "GenerateError", "ObjectType", "LoopTypes",
-    "find_object_type", "find_loop_types", "is_interpreter_core",
-    "generate", "generated_names",
+    "GenerateError", "ObjectType", "LoopTypes", "AnswerType", "PathType",
+    "find_object_type", "find_loop_types", "find_answer_type",
+    "find_path_type", "is_interpreter_core", "generate", "generated_names",
+    "names_generation_adds",
 ]
 
 
@@ -123,33 +124,44 @@ def find_object_type(program: A.Program) -> Optional[ObjectType]:
 
 @dataclass(frozen=True)
 class LoopTypes:
-    """The step-outcome type and the result type of a fuel loop."""
+    """The step-outcome type ``O`` and the result type ``R`` of a fuel
+    loop, and the map between them."""
     outcome: A.TypeDecl
     result: A.TypeDecl
     stepped: A.Ctor          #: O's term-carrying ctor: continue the loop
-    done: A.Ctor             #: O's first terminal: no redex, success
-    o_rest: Tuple[A.Ctor, ...]    #: O's remaining terminals, in order
+    done: A.Ctor             #: O's first nullary ctor: no redex, success
+    o_rest: Tuple[A.Ctor, ...]    #: O's other non-stepped ctors, in order
     value: A.Ctor            #: R's term-carrying ctor
-    r_rest: Tuple[A.Ctor, ...]    #: R's terminals, in order
-    timeout: A.Ctor          #: R's last terminal: fuel exhausted
+    timeout: A.Ctor          #: R's last nullary ctor: fuel exhausted
+    #: for each ctor of ``o_rest``, the R constructor it maps to
+    mapping: Tuple[Tuple[str, str], ...] = ()
 
     @property
     def same(self) -> bool:
         return self.outcome.name == self.result.name
 
+    def r_of(self, oname: str) -> str:
+        for o, r in self.mapping:
+            if o == oname:
+                return r
+        raise KeyError(oname)
+
 
 def _carrier(d: A.TypeDecl, tname: str) -> Optional[Tuple[A.Ctor, Tuple[A.Ctor, ...]]]:
-    """(the unique ctor carrying one field of type ``tname``, the rest),
-    or ``None`` if ``d`` does not have that shape."""
+    """(the unique ctor carrying exactly one field of type ``tname``, the
+    rest), or ``None`` if ``d`` does not have that shape.
+
+    The other constructors may be nullary *or* carry fields of some other
+    type: ``outcome ≡ SteppedN term5 ∣ DoneN ∣ ErrdN ∣ PendingN path``
+    is outcome-shaped, and ``PendingN``'s payload is what makes blocking
+    expressible at all.
+    """
     if len(d.ctors) < 2:
         return None
     carry = [c for c in d.ctors if len(c.fields) == 1 and c.fields[0] == tname]
     if len(carry) != 1:
         return None
-    rest = tuple(c for c in d.ctors if c is not carry[0])
-    if any(c.fields for c in rest):
-        return None
-    return carry[0], rest
+    return carry[0], tuple(c for c in d.ctors if c is not carry[0])
 
 
 def find_loop_types(program: A.Program, obj: ObjectType) -> LoopTypes:
@@ -173,24 +185,144 @@ def find_loop_types(program: A.Program, obj: ObjectType) -> LoopTypes:
             f"object type {obj.name!r} is declared but no step-outcome type "
             f"is: declare one, e.g. "
             f"'maybe === Nothing | Just {obj.name}'")
-    if len(cands) > 2:
-        raise GenerateError(
-            "more than two outcome-shaped types declared ("
-            + ", ".join(d.name for d, _, _ in cands)
-            + "); this generator supports the two shapes the artifact uses: "
-              "O = R = Maybe, or O = Stepped|Done|Errd with "
-              "R = RVal|RErr|RTime")
-    od, stepped, o_rest = cands[0]
-    rd, value, r_rest = cands[-1]
+    if len(cands) == 1:
+        od, stepped, o_rest = cands[0]
+        rd, value = od, stepped
+    else:
+        # The *last two* outcome-shaped declarations are O and R.  A
+        # program that also declares an oracle answer type -- which is
+        # outcome-shaped too, `oanswer ≡ OJust term5 ∣ ONothing ∣ ONotYet`
+        # -- declares it before them.
+        od, stepped, o_rest = cands[-2]
+        rd, value, _ = cands[-1]
     if len(od.ctors) != len(rd.ctors):
         raise GenerateError(
             f"outcome type {od.name!r} has {len(od.ctors)} constructors and "
             f"result type {rd.name!r} has {len(rd.ctors)}; the loop needs one "
             f"result constructor per outcome constructor (one terminal is "
             f"spent on the timeout)")
-    return LoopTypes(outcome=od, result=rd, stepped=stepped, done=o_rest[0],
-                     o_rest=o_rest[1:], value=value, r_rest=r_rest,
-                     timeout=r_rest[-1])
+    return _build_loop_types(od, stepped, o_rest, rd, value)
+
+
+def _build_loop_types(od, stepped, o_rest, rd, value) -> LoopTypes:
+    """Work out which ``R`` constructor each ``O`` constructor maps to.
+
+    ``SURFACE-LANGUAGE-DESIGN.md`` §6c's rule, extended for an outcome
+    constructor that carries a payload:
+
+    * ``O``'s first nullary constructor is "no redex", and yields ``R``'s
+      term-carrying constructor applied to the current term;
+    * an ``O`` constructor that carries a payload maps to ``R``'s
+      constructor **at the same position**, which must carry one too, and
+      is handed the same payload (``PendingN p`` -> ``RBlockN p``);
+    * ``O``'s remaining nullary constructors map, in order, onto ``R``'s
+      nullary constructors other than the timeout;
+    * the timeout, returned at ``Zero`` fuel, is ``R``'s last nullary
+      constructor.
+    """
+    r_nullary = [c for c in rd.ctors if not c.fields]
+    if not r_nullary:
+        raise GenerateError(
+            f"result type {rd.name!r} has no nullary constructor, so the "
+            f"loop has nothing to return when the fuel runs out")
+    timeout = r_nullary[-1]
+    spare = [c for c in r_nullary if c is not timeout and c is not value]
+    nullary_o = [c for c in o_rest if not c.fields]
+    if not nullary_o:
+        raise GenerateError(
+            f"outcome type {od.name!r} has no nullary constructor, so the "
+            f"loop cannot tell when the term has no redex left")
+    done = nullary_o[0]
+    mapping: List[Tuple[str, str]] = [(done.name, value.name)]
+    spare_i = 0
+    for c in o_rest:
+        if c is done:
+            continue
+        if c.fields:
+            idx = list(od.ctors).index(c)
+            if idx >= len(rd.ctors) or len(rd.ctors[idx].fields) != len(c.fields):
+                raise GenerateError(
+                    f"outcome constructor {c.name!r} carries "
+                    f"{len(c.fields)} field(s), so the result type needs a "
+                    f"constructor carrying as many at position {idx + 1}")
+            mapping.append((c.name, rd.ctors[idx].name))
+            continue
+        if spare_i >= len(spare):
+            raise GenerateError(
+                f"outcome constructor {c.name!r} has no result constructor "
+                f"left to map onto in {rd.name!r}")
+        mapping.append((c.name, spare[spare_i].name))
+        spare_i += 1
+    return LoopTypes(outcome=od, result=rd, stepped=stepped, done=done,
+                     o_rest=tuple(c for c in o_rest if c is not done),
+                     value=value, timeout=timeout, mapping=tuple(mapping))
+
+
+@dataclass(frozen=True)
+class AnswerType:
+    """The oracle's answer type: what a resolver returns.
+
+    Found by shape, as the outcome-shaped declaration that is neither the
+    step outcome nor the result -- `maybe ≡ Nothing ∣ Just term5` for
+    `wfQ`, `oanswer ≡ OJust term5 ∣ ONothing ∣ ONotYet` for `wfN`.
+    """
+    decl: A.TypeDecl
+    hit: A.Ctor              #: carries the answer
+    notyet: A.Ctor           #: the last nullary ctor: no answer (yet)
+
+
+def find_answer_type(program: A.Program, obj: ObjectType,
+                     lt: LoopTypes) -> Optional[AnswerType]:
+    spoken = {lt.outcome.name, lt.result.name}
+    cands = []
+    for d in program.decls:
+        if not isinstance(d, A.TypeDecl) or d.name == obj.name:
+            continue
+        if d.name in spoken:
+            continue
+        got = _carrier(d, obj.name)
+        if got is not None:
+            cands.append((d, got[0]))
+    if not cands:
+        return None
+    if len(cands) > 1:
+        raise GenerateError(
+            "more than one oracle answer type declared ("
+            + ", ".join(d.name for d, _ in cands)
+            + "); a namespace literal would not know which to build")
+    d, hit = cands[0]
+    nullary = [c for c in d.ctors if not c.fields]
+    if not nullary:
+        raise GenerateError(
+            f"answer type {d.name!r} has no nullary constructor for 'no "
+            f"answer'")
+    return AnswerType(d, hit, nullary[-1])
+
+
+@dataclass(frozen=True)
+class PathType:
+    """``path === Nil | Cons seg path``, found by name (``SYNTAX.md`` §6
+    fixes the name and the shape)."""
+    decl: A.TypeDecl
+    nil: A.Ctor
+    cons: A.Ctor
+    seg: str                 #: the name of the segment type
+
+
+def find_path_type(program: A.Program) -> Optional[PathType]:
+    for d in program.decls:
+        if not isinstance(d, A.TypeDecl) or d.name != "path":
+            continue
+        nils = [c for c in d.ctors if not c.fields]
+        conses = [c for c in d.ctors
+                  if len(c.fields) == 2 and c.fields[1] == d.name]
+        if len(d.ctors) != 2 or len(nils) != 1 or len(conses) != 1:
+            raise GenerateError(
+                "the path type must be 'path === Nil | Cons seg path': a "
+                "nullary constructor and one carrying a segment and a tail "
+                "(SYNTAX.md §6)")
+        return PathType(d, nils[0], conses[0], conses[0].fields[0])
+    return None
 
 
 def is_interpreter_core(core: A.Core, obj: ObjectType) -> bool:
@@ -200,7 +332,9 @@ def is_interpreter_core(core: A.Core, obj: ObjectType) -> bool:
     names = {arm.name for arm in core.arms}
     if "step" in names or "loop" in names:
         return True
-    return any("step" + c.name in names for c in obj.leaves)
+    # every constructor, not only the leaves, so that `stepApp` is seen
+    # and refused by the checker rather than passing unnoticed
+    return any("step" + c.name in names for c in obj.decl.ctors)
 
 
 # ----------------------------------------------------------------- generation
@@ -284,15 +418,24 @@ def _default_step_arms(obj: ObjectType, lt: LoopTypes) -> List[A.Arm]:
     return out
 
 
-def _core_step_arm(obj: ObjectType) -> A.Arm:
+def _core_step_arm(obj: ObjectType, core: A.Core) -> A.Arm:
     """``step m = sp m nil stepC1 ... stepCn``, leaves in declaration
-    order -- which is the order the walker hands them over."""
+    order -- which is the order the walker hands them over.
+
+    A step arm the *core* defines is passed the core's parameters, since
+    an arm reference is raw; a program-level default arm is not.  That is
+    the artifact's ``spQ m nil stepSQ stepKQ stepIQ (stepScQ e)``.
+    """
+    mine = {arm.name for arm in core.arms}
+    slots = []
+    for c in obj.leaves:
+        nm = "step" + c.name
+        slots.append(_ap(nm, *core.params) if nm in mine else _n(nm))
     return _arm("step", ["m"],
-                _ap(_n("sp"), _n("m"), _n("nil"),
-                    *[_n("step" + c.name) for c in obj.leaves]))
+                _ap(_n("sp"), _n("m"), _n("nil"), *slots))
 
 
-def _core_loop_arms(lt: LoopTypes) -> List[A.Arm]:
+def _core_loop_arms(lt: LoopTypes, core: A.Core) -> List[A.Arm]:
     """The fuel loop, from O and R.
 
     ``loop1 f m n2 = step m <one continuation per O constructor, in
@@ -304,21 +447,53 @@ def _core_loop_arms(lt: LoopTypes) -> List[A.Arm]:
     (loop1 loop m)`` peels one ``Suc`` per attempt and returns R's last
     terminal when the fuel is ``Zero``.
     """
+    ps = list(core.params)
     conts: List[A.Expr] = []
-    rest_iter = list(lt.r_rest)
     for c in lt.outcome.ctors:
         if c.name == lt.stepped.name:
-            conts.append(_ap("f", "n2"))
+            conts.append(_ap(_n("f"), *[_n(x) for x in ps], _n("n2")))
         elif c.name == lt.done.name:
             conts.append(_ap(lt.value.name, "m"))
         else:
-            idx = [x.name for x in lt.o_rest].index(c.name)
-            conts.append(_n(rest_iter[idx].name))
+            conts.append(_n(lt.r_of(c.name)))
     return [
-        _arm("loop1", ["f", "m", "n2"], _ap(_n("step"), _n("m"), *conts)),
+        _arm("loop1", ["f", "m", "n2"],
+             _ap(_ap("step", *ps), _n("m"), *conts)),
         _arm("loop", ["n", "m"],
-             _ap(_n("n"), _n(lt.timeout.name), _ap("loop1", "loop", "m"))),
+             _ap(_n("n"), _n(lt.timeout.name),
+                 _ap(_ap("loop1", *ps), _n("loop"), _n("m")))),
     ]
+
+
+def names_generation_adds(program: A.Program):
+    """What :func:`generate` will supply, without generating it: the
+    program-level names, and the extra arms of each interpreter core.
+
+    The checker needs this so it can be a pass over the *parsed* program
+    -- it must not call an arm undefined when generation is about to
+    define it.
+    """
+    obj = find_object_type(program)
+    if obj is None:
+        return set(), {}
+    taken = set()
+    for d in program.decls:
+        if isinstance(d, A.TypeDecl):
+            taken.update(c.name for c in d.ctors)
+        elif isinstance(d, (A.Arm, A.Macro, A.Def, A.Core)):
+            taken.add(d.name)
+    top = {n for n in generated_names(obj) if n not in taken}
+    per_core = {}
+    for d in program.decls:
+        if isinstance(d, A.Core) and is_interpreter_core(d, obj):
+            have = {arm.name for arm in d.arms}
+            extra = set()
+            if "step" not in have:
+                extra.add("step")
+            if "loop" not in have:
+                extra |= {"loop", "loop1"}
+            per_core[d.name] = extra
+    return top, per_core
 
 
 def generate(program: A.Program) -> A.Program:
@@ -356,11 +531,11 @@ def _fill_core(core: A.Core, obj: ObjectType, lt: LoopTypes) -> A.Core:
     have = {arm.name for arm in core.arms}
     added: List[A.Arm] = []
     if "step" not in have:
-        added.append(_core_step_arm(obj))
+        added.append(_core_step_arm(obj, core))
     if "loop" not in have:
         if "loop1" in have:
             raise GenerateError(
                 f"core {core.name!r} writes 'loop1' but not 'loop'; write "
                 f"both or neither")
-        added += _core_loop_arms(lt)
-    return A.Core(core.name, tuple(list(core.arms) + added))
+        added += _core_loop_arms(lt, core)
+    return A.Core(core.name, tuple(list(core.arms) + added), core.params)

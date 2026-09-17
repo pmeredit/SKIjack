@@ -148,9 +148,15 @@ class Arm:
 
 @dataclass(frozen=True)
 class Core:
-    """``name := { arms }``."""
+    """``name := { arms }``, or ``name p1 p2 := { arms }``.
+
+    A core's parameters are prepended to every arm's binder list and are
+    in scope in every arm body; the core's name denotes its loop applied
+    to nothing, so ``wfQ E |- <t>@n`` supplies them
+    (``SURFACE-LANGUAGE-DESIGN.md`` §6, the interpreter's own arity)."""
     name: str
     arms: Tuple[Arm, ...]
+    params: Tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

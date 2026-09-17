@@ -1,4 +1,6 @@
+import os
 import pathlib
+import threading
 
 import pytest
 
@@ -14,7 +16,8 @@ ALL_SOURCES = sorted(
 #: generation; the three interpreter stems exercise generate.py.  The
 #: remaining stems need quotation, which is a later step.
 EXPANDABLE = ("sec1-nat", "sec2-c", "sec3-swap")
-INTERPRETERS = ("interp-whnff", "interp-whnff-written-loop", "interp-t3")
+INTERPRETERS = ("interp-whnff", "interp-whnff-written-loop",
+                "interp-whnff-written", "interp-t3")
 
 
 def source(stem: str, lexicon: str) -> str:
@@ -30,16 +33,34 @@ def corpus():
 #: body is executed with the ``__main__`` block split off, which is the
 #: whole of the dependency: nothing is written back and the artifact's
 #: own Environment is never handed to the expander.
-ARTIFACT = pathlib.Path("/Users/neal/ski-in-ski/tower_harness.py")
+ARTIFACT_DIR = pathlib.Path("/Users/neal/ski-in-ski")
+ARTIFACT = ARTIFACT_DIR / "tower_harness.py"
+
+
+def _load(path):
+    """Execute an artifact module's body with its ``__main__`` block split
+    off, from the artifact's own directory (``scry_harness.py`` reads
+    ``tower_harness.py`` by relative path).  Read-only: nothing is written
+    back, and the artifact's Environment is never handed to the expander.
+    """
+    if not path.exists():                          # pragma: no cover
+        pytest.skip(f"artifact not present at {path}")
+    src = path.read_text(encoding="utf-8")
+    # the first *statement* occurrence, not the one inside a string literal
+    head = src.split("\nif __name__")[0]
+    ns = {"__name__": "skijack_test_oracle"}
+    cwd = os.getcwd()
+    try:
+        os.chdir(ARTIFACT_DIR)
+        exec(compile(head, str(path), "exec"), ns)
+    finally:
+        os.chdir(cwd)
+    return ns
 
 
 @pytest.fixture(scope="session")
 def oracle():
-    if not ARTIFACT.exists():                      # pragma: no cover
-        pytest.skip(f"artifact not present at {ARTIFACT}")
-    head = ARTIFACT.read_text(encoding="utf-8").split("if __name__")[0]
-    ns = {"__name__": "skijack_test_oracle"}
-    exec(compile(head, str(ARTIFACT), "exec"), ns)
+    ns = _load(ARTIFACT)
 
     from aviary_kernel.abstraction import expand as _x
 
@@ -61,3 +82,31 @@ def oracle():
             return _x(ns["enc5"](t), ns["env"])
 
     return Oracle()
+
+
+@pytest.fixture(scope="session")
+def scry_oracle():
+    """`scry_harness.py`, `scry_namespace.py` and `scry_paths.py`, which
+    build on one another: loading the last brings in all three."""
+    ns = _load(ARTIFACT_DIR / "scry_paths.py")
+
+    from aviary_kernel.abstraction import expand as _x
+
+    class ScryOracle:
+        env = ns["env"]
+        natP = staticmethod(ns["natP"])
+        encQ = staticmethod(ns["encQ"])
+        Scry = staticmethod(ns["Scry"])
+        WQ = ns["WQ"]
+        WN = ns["WN"]
+        EQ5 = ns["EQ5"]
+
+        @staticmethod
+        def term(name):
+            return _x(ns["a"](name), ns["env"])
+
+        @staticmethod
+        def encQP(t):
+            return _x(ns["encQ"](t), ns["env"])
+
+    return ScryOracle()

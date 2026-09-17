@@ -228,8 +228,14 @@ is not portable to another, as in Nock.
    namespace, and re-encoded one level up by a definable data
    transformation `⟨t⟩ ↦ ⟨⟨t⟩⟩`.
 3. A value of function type (a gate, a core, an arm) can be applied and
-   nothing else. It cannot be compared, quoted, or stored as a fact. No
-   `!=`, no `!>`, no `.=` on functions.
+   nothing else *at runtime*. It cannot be compared, stored as a fact,
+   or reified into data by any form the language offers: no `!=`, no
+   `!>`, no `.=` on functions. This does not forbid *compile-time*
+   quotation of an arm: `⟨whnfF three ⟨I K⟩⟩` is the paper's T2, and it
+   is rule 1, expand-then-encode at compile time, not a runtime
+   operation on a live value. Stage A therefore applies the data check
+   at `EQ`, at a namespace fact, and at a scry path, and checks a
+   quotation's body by the two symbol tables of §6b instead.
 4. `.*` on a computed term is available only if the term was built from
    data forms; a gate cannot be turned into a term to run.
 
@@ -251,12 +257,20 @@ fuel, no interpreter in the loop; a `Scry` leaf is an inert atom, which
 is why nothing at level 0 may use one.
 
 **Level 1, virtualized.** The term is quoted at compile time and the
-executable the host reduces is `interp E n ⟨program⟩`: an interpreter
-applied to the encoded program, a resolver, and fuel. Scry is live, fuel
-is explicit, the outcome is the interpreter's outcome type. Any
-declaration that uses `∵` is level 1; the compiler packages it so
-without being asked. The default interpreter is the blocking resolver
-loop `wfN`; `interp ⊢ …` selects another.
+executable the host reduces is the interpreter's loop applied to its
+own arguments and the encoded program: `whnfF n ⟨program⟩` for the base
+interpreter, `wfN E n ⟨program⟩` for one that takes a resolver. The
+arity is the interpreter's, not a constant of the form. Scry is live
+only under an interpreter whose alphabet has `Scry` and whose loop
+takes a resolver; fuel is explicit; the outcome is the interpreter's
+result type. Any declaration that uses `∵` is level 1, and the compiler
+packages it so without being asked. The default interpreter is a core
+named `whnfF` declared in the program (or, once the standard subject
+exists, the subject's `wfN`); `interp ⊢ …` selects another. A
+quotation with fuel is a level-1 *declaration*: it appears as a
+definition's right-hand side, and a bare `⟨t⟩` (a datum) may also be
+nested inside another quotation; a quotation inside an arm body is not
+a form.
 
 This is Urbit's split: the kernel runs raw Nock, userspace runs under
 `+mink` with scry, and jets make the virtualization free. Here the
@@ -296,13 +310,26 @@ keeps two tables:
 - **The level-0 table:** the standard subject's schema. Names are axes
   into the subject the host applies the term to.
 - **The level-1 table:** the object type's constructors, plus the
-  *quoted* standard subject. A level-1 program does not share the
+  *quoted* standard subject. (At level 0 a declared type's constructors
+  are ordinary Scott constructors and may be applied freely; the
+  interpreter's own rebuilder applies `App` to build encoded terms. The
+  only names reserved at level 0 are `S`, `K`, `I`, which denote the ISA
+  there even when the object type declares leaves of those names; inside
+  a quotation the same three names denote the leaves.) A level-1 program does not share the
   level-0 subject (it is data at a different level); it receives the
   same library as a Scott-encoded value, `⟨subject⟩`, computed once and
   shared by reference across every level-1 program. Names inside `⟪ ⟫`
   that are library names resolve to axes into `⟨subject⟩`; names that
   are constructors of the object type resolve to the constructors; and
   application inside `⟪ ⟫` is the `App` constructor.
+
+**State of implementation.** The shared `⟨subject⟩` is the destination,
+not yet a reachable state: there is no standard subject to quote. Until
+there is, a library name inside a quotation is inlined as its expanded
+level-0 term and quoted in place, exactly as the artifact writes
+`encP(A(UP, encP(IK)))` for T1; a name used twice in one quotation is
+therefore duplicated rather than shared, and nested quotations splice
+the inner datum as an inlined term. This is what `python/` does.
 
 This is how Arvo sits in userspace's subject. It also fixes what the
 runtime's jet table must contain: the dictionary of §5 of `DESIDERATA.md`
@@ -340,23 +367,39 @@ atom (`python/tests/corpus/interp-*.ski`).
   return `O`; the loop returns `R`; they differ because the loop has a
   timeout the arms cannot express. Both are found by shape among the
   non-object types: exactly one constructor carrying one field of the
-  object type and no other constructor carrying fields. The first such
-  declaration is `O`, the last is `R`; a single one serves as both (the
-  Maybe shape of `whnfF`); their constructor counts must agree.
+  object type; other constructors may carry other fields (a blocked
+  path). Of the outcome-shaped declarations, the *last two* are `O` and
+  `R` in that order; a single one serves as both (the Maybe shape of
+  `whnfF`); any earlier one is an oracle answer type (below); the
+  constructor counts of `O` and `R` must agree.
+- **The oracle answer type**, for an interpreter that takes a resolver:
+  the outcome-shaped declaration that is neither `O` nor `R`; its
+  payload-carrying constructor is a hit and its last nullary
+  constructor is "not yet". The resolver is a core parameter, written
+  after the core's name (`wfN e ≔ { … }`), threaded to every arm, and
+  applied to the loop first, so `wfN E ⊢ ⟨t⟩ₙ` is `loop E n ⟨t⟩`.
 - **The loop, generated from `O` and `R`** unless written. Rule: peel one
   `Suc` per attempt, returning `R`'s last terminal at `Zero`; apply
   `step m` to one continuation per `O` constructor in declaration order,
   where the term-carrying constructor continues the loop with the new
   term and the remaining fuel, `O`'s first terminal (no redex) returns
   `R`'s term-carrying constructor applied to the current term, and each
-  further terminal of `O` maps to the terminal of `R` at the same
-  position. For `maybe ≡ Nothing ∣ Just term` this yields the paper's
+  further constructor of `O` maps to the constructor of `R` at the same
+  position, handed the same payload if it carries one (`PendingN p`
+  becomes `RBlockN p`). For `maybe ≡ Nothing ∣ Just term` this yields the paper's
   `wf1`/`wfGen`; for `outcome ≡ Stepped term ∣ Done ∣ Errd` with
   `result ≡ RVal term ∣ RErr ∣ RTime` it yields `wf5Abs1`/`wf5Abs`. A
   written `loop` in the core overrides the generated one; because arms
   are tied with per-arm fixpoints, a written loop passes itself to its
   helper as the artifact does (`loop1 f m n2 = step m (Just m) (f n2)`,
   `loop n m = n Nothing (loop1 loop m)`) rather than recursing mutually.
+- **What fuel counts.** Fuel `k` permits `k` step-attempts, and the last
+  attempt must be the one that finds no redex; a term that needs `s`
+  contractions therefore needs fuel `s + 1`, and fuel `s` times out.
+  This is the whole difference between `⟨flipA [K I] K⟩₄₀` (`Nothing`)
+  and `⟨…⟩₄₁` (`Just ⟨I⟩`), and between `⟨K I Err⟩₁` (`RTime`) and
+  `⟨K I Err⟩₂` (`RVal ⟨I⟩`); the generated loop implements it and the
+  tests pin both boundaries.
 - **The core's name denotes its loop.** `whnfF ⊢ …` applies it.
 
 Two interpreters with the same three types and different arms are the
