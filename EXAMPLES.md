@@ -127,36 +127,52 @@ gone. Then:
 Unicode:
 ```
 term5 ≡ S ∣ K ∣ I ∣ App term5 term5 ∣ Err
-myInterp ≔ {
-  step m      = sp m nil stepS stepK stepI stepErr
-  stepErr acc = errd
-}
-answer ≔ myInterp ⊢ ⟨K I Err⟩₅
+outcome ≡ Stepped term5 ∣ Done ∣ Errd
+result ≡ RVal term5 ∣ RErr ∣ RTime
+
+omega = S I I (S I I)
+
+wf5Abs ≔ { stepErr acc = Errd }
+wf5Omg ≔ { stepErr acc = omega }
+answer ≔ wf5Abs ⊢ ⟨K I Err⟩₅
 ```
 
 ASCII:
 ```
 term5 === S | K | I | App term5 term5 | Err
-myInterp := {
-  step m      = sp m nil stepS stepK stepI stepErr
-  stepErr acc = errd
-}
-answer := myInterp |- <K I Err>@5
+outcome === Stepped term5 | Done | Errd
+result === RVal term5 | RErr | RTime
+
+omega = S I I (S I I)
+
+wf5Abs := { stepErr acc = Errd }
+wf5Omg := { stepErr acc = omega }
+answer := wf5Abs |- <K I Err>@5
 ```
 
-The type declaration generates the five constructors, the case form,
-and this arity's spine walker `sp` and rebuilder `rb`; `stepS`,
-`stepK`, `stepI` are the standard subject's default arms instantiated at
-this arity; the fuel loop is generated from the outcome type (a written
-loop is allowed). `stepErr` is the one arm the user wrote. Inside `< >`
-the names `K`, `I`, `Err` are constructors of `term5` and juxtaposition
-is `App`. `answer` reduces to `just <I>`: the `K` arm fires on the
-encoded `K` and discards the encoded `Err`, which never reaches head
-position. This is the paper's `wf5Abs` (768 atoms) written in the
-surface; the same core with `stepErr acc = omega` is `wf5Omg` (771).
-(The interpreter itself has not yet been compiled from this source;
-the sizes are the paper's, for the hand-written terms it corresponds
-to.)
+The object type is found by shape (`App` is the one constructor with two
+fields of its own type); its declaration generates the five
+constructors, the case form, and this arity's `sp` and `rb`. `stepS`,
+`stepK`, `stepI` are the default arms for the leaves of those names;
+`step` and the fuel loop are generated from the three declarations
+(`SURFACE-LANGUAGE-DESIGN.md` §6c). `stepErr` is the one arm each core
+writes, and the two cores differ in nothing else.
+
+**Measured** (`python/tests/test_interpreter.py`): `wf5Abs` compiles to
+768 atoms and `wf5Omg` to 771, each definition byte-identical to the
+paper's hand-written terms (`st5Abs` 684, `st5Omg` 687, `sp5` 166,
+`rb5` 81, `q5S` 275, `q5K` 121, `q5I` 107, the two arms 4 and 7, `omega`
+6). With the paper's encoder and fuel 20 the T3 table reproduces
+exactly: `Err` and `Err K` give ERR under `wf5Abs` and host divergence
+under `wf5Omg`; `K I Err` and `I K` give VAL under both, with identical
+contraction counts (574 and 438); `Ω` gives TIME under both (10,130).
+The base interpreter, `term ≡ S ∣ K ∣ I ∣ App term term`, `maybe ≡
+Nothing ∣ Just term`, `whnfF ≔ { step m = sp m nil stepS stepK stepI }`,
+compiles to the paper's 618-atom `whnfF` byte for byte, with every
+intermediate definition identical (`step` 569, `sp` 126, `rb` 74,
+`stepS` 237, `stepK` 105, `stepI` 92), and `whnfF 3 ⟨I K⟩` reaches weak
+head normal form in exactly 340 host contractions, decoding to
+`Just ⟨K⟩`. The `answer` line is not yet run: `⊢` and `⟨ ⟩` are step 4.
 
 ## 5. A value lookup
 
@@ -186,8 +202,7 @@ is append-only. Not yet run in the surface; the mechanism is the paper's
 ## 6. What was measured and what was not
 
 Measured, in this order, on the reference expander and reducer:
-sections 1 to 3 in full. Section 4's sizes are the paper's for the
-hand-written equivalents. Section 5 describes the paper's verified
+sections 1 to 4 in full (section 4's `answer` line excepted). Section 5 describes the paper's verified
 mechanism in the surface's notation and has not been compiled from that
-notation, since the expander does not exist yet. The first milestone of
-`DESIDERATA.md` §6 is to make sections 4 and 5 measured statements.
+notation; quotation and the level-1 run are the next step, after which
+section 5 and section 4's `answer` become measured statements.

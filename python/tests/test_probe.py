@@ -94,3 +94,33 @@ def test_markers_are_fresh_and_uninterpreted():
     e = expand_program(parse(source("sec2-c", "ascii"), "ascii"))
     p = Prober(e)
     assert [m.name for m in p.markers(3)] == ["X1", "X2", "X3"]
+
+
+def test_the_numeral_reader_memoizes_soundly():
+    """The reader caches by node identity.  CPython recycles ids, so the
+    cache must hold the node itself; reading two numerals must not let
+    one's answer leak into the other."""
+    e = expand_program(parse(source("sec1-nat", "ascii"), "ascii"))
+    p = Prober(e)
+    for k in (0, 1, 2, 3, 5, 8):
+        assert p.read_nat(p.nat(k), max_steps=FUEL) == k
+        assert p.read_nat(p.nat(k), max_steps=FUEL) == k   # now from cache
+    assert p._nat_cache, "nothing was memoized"
+    for key, (node, value) in p._nat_cache.items():
+        assert id(node) == key                # the node pins its own id
+        assert p.read_nat(node, max_steps=FUEL) == value
+
+
+def test_reading_a_numeral_twice_agrees_under_churn():
+    e = expand_program(parse(source("sec1-nat", "ascii"), "ascii"))
+    p = Prober(e)
+    first = [p.read_nat(p.reduce(e.term("dec"), p.nat(k), max_steps=FUEL,
+                                 whnf_only=True).term, max_steps=FUEL)
+             for k in range(6)]
+    assert first == [0, 0, 1, 2, 3, 4]
+    junk = [expand_program(parse(source("sec2-c", "ascii"), "ascii"))
+            for _ in range(3)]
+    second = [p.read_nat(p.reduce(e.term("dec"), p.nat(k), max_steps=FUEL,
+                                  whnf_only=True).term, max_steps=FUEL)
+              for k in range(6)]
+    assert second == first and len(junk) == 3

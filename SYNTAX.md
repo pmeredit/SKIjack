@@ -91,25 +91,42 @@ answer  := wfN resolve |- <?^/k/three>@10
 
 A user interpreter with one added constructor, and a program run under
 it, in ASCII (the Unicode spelling differs only in `≡`, `≔`, `⊢`, and the
-brackets):
+brackets). This is the source the reference implementation compiles to
+the paper's `wf5Abs` (768 atoms) and `wf5Omg` (771), atom for atom:
 ```
 term5 === S | K | I | App term5 term5 | Err
-myInterp := {
-  step m      = sp m nil stepS stepK stepI stepErr
-  stepErr acc = errd
-  loop n m    = n nothing (loop1 m)
-  loop1 m n2  = step m (loop n2) (just m) errd
-}
-answer := myInterp |- <K I Err>@5
+outcome === Stepped term5 | Done | Errd
+result === RVal term5 | RErr | RTime
+
+omega = S I I (S I I)
+
+wf5Abs := { stepErr acc = Errd }
+wf5Omg := { stepErr acc = omega }
+
+answer := wf5Abs |- <K I Err>@5
 ```
-Inside `< >` the names `K`, `I`, `Err` are constructors of `term5` and
-juxtaposition is `App`; outside it they would be the level-0
-combinators. `stepS`, `stepK`, `stepI`, `sp`, and `rb` are the standard
-subject's defaults instantiated at `term5`'s arity by the type
-declaration (`SURFACE-LANGUAGE-DESIGN.md` §6c); `stepErr` is the one arm
-the user wrote. `answer` reduces to `just <I>`: the `K` arm fires on the
-encoded `K` and discards the encoded `Err`, which never reaches head
-position.
+`App` is the application constructor by shape; `S`, `K`, `I` are leaves
+with default arms; `Err` is the leaf the user writes an arm for; `step`
+and the loop are generated from the three declarations
+(`SURFACE-LANGUAGE-DESIGN.md` §6c). The base interpreter itself is
+```
+term === S | K | I | App term term
+maybe === Nothing | Just term
+whnfF := { step m = sp m nil stepS stepK stepI }
+```
+which compiles to the paper's 618-atom `whnfF` exactly; with the loop
+written out instead of generated,
+```
+whnfF := {
+  step m       = sp m nil stepS stepK stepI
+  loop1 f m n2 = step m (Just m) (f n2)
+  loop n m     = n Nothing (loop1 loop m)
+}
+```
+compiles to the same term. Inside `< >` the names `K`, `I`, `Err` are
+constructors of `term5` and juxtaposition is `App`; outside it, `S`,
+`K`, `I` are always the level-0 combinators, which is why `omega` can
+share a file with the declaration.
 
 ## 4. Grammar sketch
 

@@ -16,7 +16,7 @@ reimplements contraction or bracket abstraction.
 
 from __future__ import annotations
 
-from typing import Dict, Optional, Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from aviary_kernel.environment import Environment
 from aviary_kernel.reduce import (ReduceResult, Status, _decompose, _Frame,
@@ -118,7 +118,12 @@ class Prober:
         self.env = Environment()
         self._zero_name = zero
         self._suc_name = suc
-        self._nat_cache: Dict[int, int] = {}
+        #: id(node) -> (the node itself, its value).  The node is kept in
+        #: the value on purpose: CPython recycles ids as soon as an object
+        #: is collected, so a cache that held only the id would hand back
+        #: another term's answer.  Holding the node pins the id, and the
+        #: identity check below is belt and braces.
+        self._nat_cache: Dict[int, Tuple[object, int]] = {}
 
     # --- markers ---------------------------------------------------------
 
@@ -173,15 +178,21 @@ class Prober:
         """
         n = 0
         cur = term
+        seen: List[object] = []
         for _ in range(max_depth):
             key = id(cur)
-            if key in self._nat_cache:
-                return n + self._nat_cache[key]
+            hit = self._nat_cache.get(key)
+            if hit is not None and hit[0] is cur:
+                for i, node in enumerate(seen):
+                    self._nat_cache[id(node)] = (node, hit[1] + len(seen) - i)
+                return n + hit[1]
+            seen.append(cur)
             r = self.reduce(cur, Atom(ZERO_MARK), Atom(SUCC_MARK),
                             max_steps=max_steps, whnf_only=True)
             x = r.term
             if isinstance(x, Atom) and x.name == ZERO_MARK:
-                self._nat_cache[key] = 0
+                for i, node in enumerate(seen):
+                    self._nat_cache[id(node)] = (node, len(seen) - 1 - i)
                 return n
             if (isinstance(x, App) and isinstance(x.fn, Atom)
                     and x.fn.name == SUCC_MARK):

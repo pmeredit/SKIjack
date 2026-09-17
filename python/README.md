@@ -1,8 +1,16 @@
-# `skijack` — the surface language, steps 1 and 2
+# `skijack` — the surface language, steps 1 to 3
 
-Steps 1 (syntax: two lexicons, one grammar, one tree, a renderer) and 2
+Steps 1 (syntax: two lexicons, one grammar, one tree, a renderer), 2
 (codegen to closed `{S,K,I}` terms, without types and without quotation)
-of `DESIDERATA.md` §6.
+and 3 (the type-generated forms of the interpreter interface) of
+`DESIDERATA.md` §6.
+
+The milestone of §6 item 2 is reached: **the paper's interpreter compiles
+from surface source, atom for atom and count for count.** `whnfF` written
+in the surface compiles to a term byte-identical to the artifact's
+618-atom `whnfF`, T0 reaches weak head normal form in exactly 340 host
+contractions, and the T3 pair compiles to 768 and 771 atoms with the
+paper's table.
 
 The design notes one directory up are the specification:
 `DESIDERATA.md`, `SYNTAX.md`, `SURFACE-LANGUAGE-DESIGN.md`,
@@ -32,7 +40,7 @@ importable from the working directory.
 `python3 -m pytest -q` from `python/`:
 
 ```
-174 passed
+323 passed
 ```
 
 * `tests/test_lexicon.py` — the token table is checked at import as a
@@ -57,7 +65,15 @@ importable from the working directory.
   `EXAMPLES.md` sections 1–3 (below), plus the behaviour of each pass
   and the errors it raises.
 * `tests/test_probe.py` — every "check run" of `EXAMPLES.md` sections
-  1–3, read behaviorally.
+  1–3, read behaviorally, plus two regression tests for the
+  Scott-numeral reader's memo table (see "A bug this step found").
+* `tests/test_generate.py` — shape discovery (the object type, the
+  outcome and result types), what each core is filled with, that a
+  user-written `sp` / `step` / `loop` is never replaced, and that
+  everything generated is surface syntax that renders and re-parses.
+* `tests/test_interpreter.py` — the milestone: every definition of the
+  compiled `whnfF` against the artifact's, T0's 340 contractions and its
+  decoded value, and the T3 pair's sizes, table and faithfulness.
 
 ### The measured values, reproduced
 
@@ -87,9 +103,77 @@ Probes (fresh marker atoms, never combinator syntax): `inc 2 = 3`,
 match `EXAMPLES.md`: `dec 3` reaches WHNF in 15 host contractions and
 `flipA [K I] K` reduces to `I` in 40.
 
+### The interpreter, compiled from surface source
+
+`tests/corpus/interp-whnff.*.ski` is the whole of the paper's base
+interpreter:
+
+```
+term === S | K | I | App term term
+maybe === Nothing | Just term
+
+whnfF := {
+  step m = sp m nil stepS stepK stepI
+}
+```
+
+`generate.py` supplies the rest from the two declarations: the walker
+`sp`, the rebuilder `rb`, their helpers, the default `stepS` / `stepK` /
+`stepI`, and the core's fuel loop. Every definition it produces is
+**byte-identical** to the artifact's, checked one by one in
+`test_interpreter.py::test_every_definition_matches_the_artifact`:
+
+| this package | the artifact | atoms |
+|---|---|---|
+| `whnfF` (the core's loop) | `whnfF` | **618** |
+| `whnfF.loop1` | `wf1` | 588 |
+| `whnfF.step` | `step` | **569** (`SURFACE-LANGUAGE-DESIGN.md` §9) |
+| `sp` / `spApp` / `resS` / `resK` / `resI` | same names | 126 / 48 / 15 / 13 / 11 |
+| `rb` / `rb1` | same names | 74 / 44 |
+| `stepS`…`stepS3`, `stepK`…`stepK2`, `stepI`, `stepI1` | same names | 237 / 105 / 92 … |
+| `S` `K` `I` `App` | `encS` `encK` `encI` `encA` | 7 / 5 / 3 / 32 |
+| `Nothing` `Just` `nil` `cons` | `nothing` `just` `nil` `cons` | 1 / 8 / 1 / 22 |
+
+**T0.** `whnfF 3 <I K>` reaches weak head normal form in exactly **340**
+host contractions, and decodes behaviorally to `Just <K>`: the outcome
+selects the `Just` marker and its payload, applied to four markers,
+selects the `K` one.
+
+A second corpus file writes the loop out instead
+(`interp-whnff-written-loop.*.ski`) and compiles to the same 618-atom
+term, which is what "a written loop overrides the generated one" has to
+mean.
+
+**T3.** `interp-t3.*.ski` declares the five-constructor alphabet, the
+three-way outcome and the three-way result, and two cores differing in
+one arm:
+
+```
+wf5Abs := { stepErr acc = Errd }
+wf5Omg := { stepErr acc = omega }
+```
+
+`wf5Abs` compiles to **768** atoms and `wf5Omg` to **771**, both
+byte-identical to the artifact's, as are their `step`, `loop1`, `stepErr`
+and the shared `sp` / `rb` / `stepS` / `stepK` / `stepI`. With fuel 20
+and a host cap of 400,000 contractions the table is the paper's:
+
+| object term | `wf5Abs` | `wf5Omg` |
+|---|---|---|
+| `Err` | ERR (127 contractions) | host diverges (hits the cap) |
+| `Err K` | ERR (222) | host diverges |
+| `K I Err` | VAL (574) | VAL (574) |
+| `I K` | VAL (438) | VAL (438) |
+| `Omega` | TIME (10,130) | TIME (10,130) |
+
+The two agree exactly — answer *and* contraction count — wherever the
+`Err` arm never fires, which is the faithfulness claim; they differ only
+where it does, and there the absorbing arm reports a crash the other
+hides as host divergence.
+
 ## What is *not* here
 
-Out of scope for these two steps, and refused with a clear error by
+Out of scope for these three steps, and refused with a clear error by
 `expand_program` rather than silently mis-compiled:
 
 * **types** — `===` declarations and `:` signatures are parsed and kept
@@ -99,7 +183,10 @@ Out of scope for these two steps, and refused with a clear error by
 * **quotation and level-1 packaging** — `<t>`, `<t>@n`, `I |- <t>@n`,
   `?^/a/b` and `ns{…}` parse, render and round-trip, but reaching the
   code generator raises `ExpandError`. `EXAMPLES.md` §4 and §5 and
-  `SYNTAX.md` §3 are therefore parse/round-trip corpus only.
+  `SYNTAX.md` §3 are therefore parse/round-trip corpus only; the
+  interpreters they sketch are compiled here from `interp-*.ski`
+  instead, and driven with the artifact's encoder rather than a
+  surface quoter.
 * **wing resolution** — `a.b` is carried as the dotted name; there is no
   subject and no axis schema yet, so a wing does not compile.
 * **capturing macros** — `:=!` is refused by name
@@ -183,6 +270,73 @@ the interpretation chosen is the one that makes `EXAMPLES.md` work.
     That is what is implemented and tested; a real definition-site
     environment arrives with the subject.
 
+13. **The object type is identified by shape, not by name.** It is the
+    unique declared type with exactly one constructor carrying two fields
+    of its own type — the application constructor. Every other
+    constructor of that type must be a leaf. Two such constructors, a
+    non-leaf non-application constructor, or two such types are each a
+    named `GenerateError`. A program with no such type generates nothing,
+    which is why `nat === Zero | Suc nat` is left alone (`Suc` carries
+    one field, not two).
+14. **The step-outcome type `O` and the result type `R` are the
+    outcome-shaped declarations, first and last.** A candidate is a
+    declared type other than the object type with exactly one constructor
+    carrying a single field of the object type and nothing else carrying
+    fields. The first candidate in declaration order is `O`, the last is
+    `R`; with one candidate `O = R`, which is `whnfF`'s Maybe shape. More
+    than two is refused.
+15. **The loop's mapping rule.** `loop1 f m n2 = step m …` applies
+    `step m` to one continuation per `O` constructor **in declaration
+    order**: `O`'s term-carrying constructor continues the loop,
+    `(f n2)`; `O`'s *first* terminal is "no redex", so the loop is done
+    and yields `R`'s term-carrying constructor applied to the current
+    term; `O`'s further terminals map one for one onto `R`'s terminals in
+    order. `loop n m = n <timeout> (loop1 loop m)` peels one `Suc` per
+    attempt and yields `R`'s **last** terminal at `Zero`. Hence
+    `|R| = |O|`, which the generator checks. For Maybe this is
+    `step m (Just m) (f n2)` and `n Nothing …`; for the T3 shape
+    `step m (f n2) (RVal m) RErr` and `n RTime …` — the artifact's `wf1`
+    and `wf5Abs1` exactly.
+16. **Default step arms are parameterized over `O`, not hard-wired.**
+    `stepS` / `stepK` / `stepI` are generated only for leaf constructors
+    literally named `S`, `K`, `I` (which is what §6c asks for), and take
+    their two outcome constructors from `O`: "no redex" is `O`'s first
+    terminal and a contraction is wrapped in `O`'s term-carrying
+    constructor. The rebuilt `x z (y z)` is spelled with the object
+    type's own application constructor and its own `rb`.
+17. **A core's fuel loop is its arm named `loop`, and the core's name
+    denotes it.** `generate.py` adds `loop` and `loop1` only when `loop`
+    is absent, and `step` only when `step` is absent, so a written one
+    always wins. `loop1` without `loop` is refused. `SYNTAX.md` §3's
+    `myInterp |- …` therefore has a term to name.
+18. **A core is an interpreter core** when an object type is declared and
+    the core writes any part of the interface: an arm named `step`,
+    `loop`, or `step<C>` for a leaf `C` of the object type.
+19. **Arms are scoped to their core.** A core arm's backend name is
+    `core_arm`, and a name inside a core resolves to a sibling arm before
+    anything program-level, so two interpreter cores can each have their
+    own `step` while sharing one `sp`. Results are keyed `core.arm`, and
+    also by the bare name when it is unambiguous program-wide.
+20. **`S`, `K` and `I` always mean the ISA at level 0**, even when the
+    object type declares constructors of those names. That is
+    `SURFACE-LANGUAGE-DESIGN.md` §6b's two symbol tables with only the
+    level-0 one implemented, and `EXAMPLES.md` §4's "outside it they
+    would be the level-0 combinators". It is what lets
+    `omega = S I I (S I I)` sit in the same file as
+    `term5 === S | K | I | App term5 term5 | Err`.
+21. **`nil` and `cons` joined the prelude.** The generated walker needs
+    the Scott list, and `EXAMPLES.md` §4 writes `sp m nil …` without
+    declaring a list type; `SURFACE-LANGUAGE-DESIGN.md` §4 lists Scott
+    lists in the standard subject. The prelude is now `pair`, `hd`, `tl`,
+    `nil`, `cons`; a program may still define its own.
+22. **`omega` is written in the surface, not built in**
+    (`omega = S I I (S I I)`, a zero-binder top-level arm), so the one
+    authored difference between `wf5Abs` and `wf5Omg` stays visible in
+    the source.
+23. **A closing `}` ends the last arm of a core**, so a one-arm core fits
+    on a line (`wf5Abs := { stepErr acc = Errd }`). Elsewhere the
+    newline rule of decision 6 is unchanged.
+
 ## Discrepancies found in the specification
 
 ### Resolved in the specification
@@ -233,11 +387,53 @@ says how.
    supercombinator), so the number is reproducible rather than
    coincidental; `sub` = 43 follows from the same two.
 
+Six more, reported against `SURFACE-LANGUAGE-DESIGN.md` §6c and
+`SYNTAX.md` §3 after step 3, now rewritten there:
+
+9. **"One step arm per constructor" meant per *leaf*.** *Resolved:* §6c
+   now reads "One step arm per leaf", and says why the application
+   constructor cannot have one — it is the spine the walker descends,
+   not a head that fires.
+10. **§6c had no result type, though the loop needs two.** *Resolved:*
+    §6c now declares "Two more types: the step outcome `O` and the
+    result `R`", says the arms return `O` and the loop returns `R`, and
+    says why: the loop has a timeout the arms cannot express.
+11. **§6c did not say how the application constructor is found.**
+    *Resolved:* §6c now identifies the object type by shape — the one
+    type with exactly one constructor carrying two fields of its own
+    type — and makes zero, two, or a non-leaf sibling an error.
+12. **The default arms key off names while everything else keys off
+    shape.** *Resolved:* §6c now states it as a deliberate exception —
+    "the one place a name rather than a shape decides what the ISA is" —
+    and says a leaf named otherwise gets no default and must be written.
+13. **`SYNTAX.md` §3's written loop did not compile** (mutually
+    recursive `loop`/`loop1`, and a body mixing Maybe with a three-way
+    outcome). *Resolved:* §6c now spells the written loop in the
+    artifact's shape, `loop1 f m n2 = step m (Just m) (f n2)` with
+    `loop n m = n Nothing (loop1 loop m)`, and says it passes itself to
+    its helper "rather than recursing mutually"; §3 carries that source.
+14. **`EXAMPLES.md` §4 spelled constructors in lower case.**
+    *Resolved:* §3 of `SYNTAX.md` and §4 of `EXAMPLES.md` now carry the
+    exact sources of `tests/corpus/interp-*.ski`, constructors
+    capitalized.
+
 ### Still open
 
-None. Nothing in the corrected `SYNTAX.md` §2 table, §4 grammar or §4
-lexing notes is inconsistent with the rest of the note or with
-`EXAMPLES.md` as far as this package exercises them.
+None. `SYNTAX.md` §2/§4 and `SURFACE-LANGUAGE-DESIGN.md` §6c are both
+consistent with what this package builds; every item above is settled in
+the notes themselves.
+
+### A bug this step found
+
+Adding the interpreter tests made the suite allocate enough that
+`Prober.read_nat`'s memo table started returning another numeral's
+answer: it was keyed by `id(node)` without holding a reference, and
+CPython recycles an id as soon as its object is collected. It surfaced as
+`dec 3 == 0` in one parametrization only. Fixed by storing
+`(node, value)` so the node pins its own id, with an identity check on
+lookup; `tests/test_probe.py` now has two regression tests for it. The
+bug was latent from step 2 and never affected a compiled term — only the
+reader that decodes one.
 
 ## Layout
 
@@ -252,10 +448,12 @@ python/
     parser.py     one grammar over token kinds, two pass
     render.py     tree -> text in either lexicon
     expand.py     macros, cases, cells/picks, cores, bracket abstraction
+    generate.py   the type-generated forms: walker, rebuilder, step arms, loop
     probe.py      behavioral decoding: markers and the Scott-numeral reader
   tests/
     conftest.py
     corpus/       every source in both spellings
-    test_lexicon.py test_parser.py test_roundtrip.py
-    test_expand.py  test_probe.py
+    test_lexicon.py test_parser.py  test_roundtrip.py
+    test_expand.py  test_probe.py    test_generate.py
+    test_interpreter.py   -- the milestone, against the paper's artifact
 ```

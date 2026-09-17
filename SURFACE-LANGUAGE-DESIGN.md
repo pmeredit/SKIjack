@@ -313,27 +313,57 @@ recognizes it.
 ### 6c. The interpreter interface
 
 An interpreter is a core that the compiler can put in the `interp`
-position. Its interface, all of which is generated from or checked
-against the object type declaration:
+position. Its interface is generated from, or checked against, three
+type declarations, and the reference implementation reproduces the
+paper's `whnfF`, `wf5Abs`, and `wf5Omg` from this interface atom for
+atom (`python/tests/corpus/interp-*.ski`).
 
-- an **object type** (the alphabet), whose declaration generates its
-  constructors, its case form, its spine walker `sp`, and its rebuilder
-  `rb` (the paper's `spQ`/`rbQ` are the five-constructor instances);
-- one **step arm per constructor**, taking the argument list the walker
-  collected; the standard subject supplies default arms for
-  constructors named `S`, `K`, `I` so that an interpreter that only
-  adds a leaf writes only that leaf's arm, which is the paper's one-site
-  authorship as a compiler convenience;
-- an **outcome type**, a declared sum type (`stepped t ∣ done ∣ errd`,
-  and so on), which the loop and the arms agree on;
-- a **fuel loop** over the outcome type, generic over which arms are
-  installed.
+- **The object type** (the alphabet), identified by shape: the one
+  declared type with exactly one constructor carrying two fields of its
+  own type, the application constructor; every other constructor of
+  that type must be nullary, a leaf. Zero or two such constructors, a
+  non-leaf non-application constructor, or two such types are errors.
+  The declaration generates the constructors, the case form, the spine
+  walker `sp` and the rebuilder `rb` at that arity (the paper's
+  `spQ`/`rbQ` are the five-constructor instances).
+- **One step arm per leaf.** The application constructor has no arm and
+  cannot: it is the spine the walker descends, not a head that fires,
+  and the walker hands the collected arguments to the leaf it reaches.
+  The standard subject supplies default arms for leaves *named* `S`,
+  `K`, `I`, which is the one place a name rather than a shape decides
+  what the ISA is; a leaf named otherwise gets no default and must be
+  written. So an interpreter that only adds a leaf writes only that
+  leaf's arm, which is the paper's one-site authorship as a compiler
+  convenience. If the core omits `step`, it is generated as `step m =
+  sp m nil stepC₁ … stepCₙ` in declaration order.
+- **Two more types: the step outcome `O` and the result `R`.** The arms
+  return `O`; the loop returns `R`; they differ because the loop has a
+  timeout the arms cannot express. Both are found by shape among the
+  non-object types: exactly one constructor carrying one field of the
+  object type and no other constructor carrying fields. The first such
+  declaration is `O`, the last is `R`; a single one serves as both (the
+  Maybe shape of `whnfF`); their constructor counts must agree.
+- **The loop, generated from `O` and `R`** unless written. Rule: peel one
+  `Suc` per attempt, returning `R`'s last terminal at `Zero`; apply
+  `step m` to one continuation per `O` constructor in declaration order,
+  where the term-carrying constructor continues the loop with the new
+  term and the remaining fuel, `O`'s first terminal (no redex) returns
+  `R`'s term-carrying constructor applied to the current term, and each
+  further terminal of `O` maps to the terminal of `R` at the same
+  position. For `maybe ≡ Nothing ∣ Just term` this yields the paper's
+  `wf1`/`wfGen`; for `outcome ≡ Stepped term ∣ Done ∣ Errd` with
+  `result ≡ RVal term ∣ RErr ∣ RTime` it yields `wf5Abs1`/`wf5Abs`. A
+  written `loop` in the core overrides the generated one; because arms
+  are tied with per-arm fixpoints, a written loop passes itself to its
+  helper as the artifact does (`loop1 f m n2 = step m (Just m) (f n2)`,
+  `loop n m = n Nothing (loop1 loop m)`) rather than recursing mutually.
+- **The core's name denotes its loop.** `whnfF ⊢ …` applies it.
 
-Two interpreters with the same object type and outcome type and
-different arms are the paper's `wf5Abs`/`wf5Omg`; an interpreter with
-an added constructor and a resolver parameter is `wfQ`. The conformance
-tests for a user interpreter whose `S`, `K`, `I` arms claim to be the
-ISA are the paper's T0–T2 counts.
+Two interpreters with the same three types and different arms are the
+paper's `wf5Abs`/`wf5Omg`; an interpreter with an added constructor and
+a resolver parameter is `wfQ`. The conformance tests for a user
+interpreter whose `S`, `K`, `I` arms claim to be the ISA are the paper's
+T0–T2 counts.
 
 ## 7. Cores as the internalized namespace
 
