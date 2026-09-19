@@ -8,15 +8,15 @@ spellings one language.*
 
 ## 1. Decisions
 
-1. **Hybrid form.** Arms are written as equations in the Turner and
+1. **Hybrid form.** Definitions are written as equations in the Turner and
    Miranda style, which is the artifact's own `D(name, binders, body)`
    form and the aviary kernel's cell language. Tier 1 combinators are
    named identifiers with an optional glyph spelling, usable tacitly
    inside equations. Cores are blocks of equations under a name.
    Quotation and virtualized evaluation are the two bracketed forms.
 2. **Cores stay.** The goal is a machine shop, not coverage of every SKI
-   term. A core is a named block of arms with an implicit self binder;
-   arms pull each other by name; the block compiles to the `Y`-tied
+   term. A core is a named block of equations with an implicit self
+   binder; equations call each other by name; the block compiles to the `Y`-tied
    tuple of `SURFACE-LANGUAGE-DESIGN.md` §2.
 3. **Application is juxtaposition, left-associative, always.** SKI's
    native order. Glyphs are identifiers, not operators: there is no
@@ -40,23 +40,23 @@ difference between the two interfaces.
 | meaning | Unicode | ASCII | notes |
 |---|---|---|---|
 | definition | `≔` | `:=` | a top-level definition: a core, or a name for an expression |
-| arm equation | `=` | `=` | `name binders = body`, inside a core or at top level; same in both lexicons |
+| equation | `=` | `=` | `name binders = body`, inside a core or at top level; same in both lexicons |
 | macro definition | `≔*` | `:=*` | expanded per use, hygienic |
 | capturing macro | `≔!` | `:=!` | the marked non-hygienic form |
-| quotation (compile time) | `⟨t⟩` | `<t>` | emits the Scott encoding; a datum, not run; the paper's notation |
-| virtualized evaluation | `⟨t⟩ₙ` | `<t>@n` | the quotation run under the default interpreter with fuel `n`; the only place scry is live |
-| interpreter selection | `I ⊢ ⟨t⟩ₙ` | `I \|- <t>@n` | run under interpreter core `I` instead of the default; a resolver is a parameter of the interpreter |
+| quotation (compile time) | `<t>` | `<t>` | emits the Scott encoding; a datum, not run; the paper's notation |
+| virtualized evaluation | `<t>ₙ` | `<t>@n` | the quotation run under the default interpreter with fuel `n`; the only place scry is live |
+| interpreter selection | `I ⊢ <t>ₙ` | `I \|- <t>@n` | run under interpreter core `I` instead of the default; a resolver is a parameter of the interpreter |
 | fact | `p ↦ v` | `p => v` | inside a namespace literal; `=>` so that `->` is the signature arrow alone and the table stays a bijection |
-| namespace literal | `⦃/a/b ↦ v, …⦄` | `ns{/a/b => v, ...}` | keys are path literals; compiles to a resolver core with a mount table (§6); the closer `⦄` and `}` are one token kind |
+| namespace literal | `ns{/a/b ↦ v, …}` | `ns{/a/b => v, ...}` | keys are path literals; compiles to a resolver core with a mount table (§6); it closes with the ordinary `}` in both lexicons |
 | scry | `∵/a/b` | `?^/a/b` | the `Scry` leaf applied to a path; the argument must be of the declared path type (§6) |
 | axis pick | `2⊑` `3⊑` | `2@` `3@` | projection by Nock axis; head is `2@`, tail `3@` |
 | cell | `[a b]` | `[a b]` | Scott pair; right-nested when more than two |
-| wing | `a.b` | `a.b` | name resolved to an axis chain |
-| lambda (local abstraction) | `λx.e` | `\x.e` | bracket-abstracted on the spot; for one-off closures, not arms |
-| case | `e ▹ { c₁ b₁ ; c₂ b₂ }` | `e |> { c1 b1 ; c2 b2 }` | one branch per constructor, in declaration order |
-| type declaration | `τ ≡ C₁ ∣ C₂ σ ρ ∣ …` | `t === C1 \| C2 s r \| ...` | constructors capitalized and followed by their field *types*; order is the ABI |
+| qualified name | `a.b` | `a.b` | a dotted name, resolved in the compile-time name table (`whnfF.step` is a core's equation); it addresses a *name*, never a position |
+| lambda (local abstraction) | `λx.e` | `\x.e` | bracket-abstracted on the spot; for one-off closures, not equations |
+| case | `e ▹ { c₁ b₁ ; c₂ b₂ }` | `e \|> { c1 b1 ; c2 b2 }` | one branch per constructor, in declaration order |
+| type declaration | `τ ≡ C₁ \| C₂ σ ρ \| …` | `t === C1 \| C2 s r \| ...` | constructors capitalized and followed by their field *types*; order is the ABI |
 | signature (optional) | `f : σ → τ` | `f : s -> t` | ignored by the expander; checked by the type stage (`DESIDERATA.md` item 11) |
-| core | `name params ≔ { arms }` | `name params := { arms }` | block of equations with implicit self; parameters after the name (a resolver, for an interpreter) are threaded to every arm and applied to the loop first; same in both lexicons |
+| core | `name params ≔ { equations }` | `name params := { equations }` | block of equations with implicit self; parameters after the name (a resolver, for an interpreter) are threaded to every equation and applied to the loop first; same in both lexicons |
 | composition (`B`) | `∘` | `B` | Tier 1 glyphs; the ASCII spelling is the name |
 | swap (`C`) | `⇄` | `C` | |
 | duplicate (`W`) | `⋈` | `W` | |
@@ -79,10 +79,10 @@ A two-fact resolver and a run under it, the paper's §6.3 example re-cast with t
 
 Unicode:
 ```
-seg  ≡ Nat ∣ Two ∣ Three
-path ≡ Nil ∣ Cons seg path
-resolve ≔ ⦃/nat/two ↦ ⟨I⟩, /nat/three ↦ ⟨K⟩⦄
-answer  ≔ wfN resolve ⊢ ⟨∵/nat/three⟩₁₀
+seg  ≡ Nat | Two | Three
+path ≡ Nil | Cons seg path
+resolve ≔ ns{/nat/two ↦ <I>, /nat/three ↦ <K>}
+answer  ≔ wfN resolve ⊢ <∵/nat/three>₁₀
 ```
 
 ASCII:
@@ -110,7 +110,7 @@ wf5Omg := { stepErr acc = omega }
 answer := wf5Abs |- <K I Err>@5
 ```
 `App` is the application constructor by shape; `S`, `K`, `I` are leaves
-with default arms; `Err` is the leaf the user writes an arm for; `step`
+with default equations; `Err` is the leaf the user writes an equation for; `step`
 and the loop are generated from the three declarations
 (`SURFACE-LANGUAGE-DESIGN.md` §6c). The base interpreter itself is
 ```
@@ -136,26 +136,26 @@ share a file with the declaration.
 
 ```
 program   := decl*
-decl      := type-decl | sig | arm | macro | core | def | run   -- arms may appear at top level
-run       := NAME '≔' [expr '⊢'] '⟨' expr '⟩' (SUB | '₍₎')   -- a level-1 declaration: quote and run,
+decl      := type-decl | sig | equation | macro | core | def | run  -- equations may appear at top level
+run       := NAME '≔' [expr '⊢'] '<' expr '>' (SUB | '₍₎')   -- a level-1 declaration: quote and run,
                                                               -- under the given interpreter or the default;
                                                               -- ASCII: NAME := [expr |-] '<' expr '>' ('@' n | '@[]')
-type-decl := NAME '≡' ctor ('∣' ctor)*        -- ASCII: NAME === ctor (| ctor)*
+type-decl := NAME '≡' ctor ('|' ctor)*        -- ASCII: NAME === ctor (| ctor)*
 ctor      := CNAME TYPE*                        -- CNAME capitalized; fields are types
 sig       := NAME ':' TYPE ('→' TYPE)*         -- optional; ASCII ->
-arm       := NAME NAME* '=' expr             -- inside a core, or at top level
-core      := NAME NAME* '≔' '{' arm* '}'        -- parameters after the name
+equation  := NAME NAME* '=' expr             -- inside a core, or at top level
+core      := NAME NAME* '≔' '{' equation* '}'   -- parameters after the name
 macro     := NAME NAME* '≔*' expr | NAME NAME* '≔!' expr
 expr      := app
 app       := atom+                           -- left-associative
 atom      := NAME | GLYPH | NUMBER | '(' expr ')'
            | '[' expr expr+ ']'              -- cell
-           | '⟨' expr '⟩'                    -- quote: a datum (also allowed nested inside a quotation)
+           | '<' expr '>'                    -- quote: a datum (also allowed nested inside a quotation)
            | '∵' atom                        -- scry
            | NUMBER '⊑'                      -- axis pick (postfix on the number)
            | 'λ' NAME '.' expr
            | expr '▹' '{' branch (';' branch)* '}'
-           | '⦃' fact (',' fact)* '⦄'        -- namespace literal (ASCII: ns{ ... })
+           | 'ns{' fact (',' fact)* '}'        -- namespace literal (ASCII: ns{ ... })
 ```
 The ASCII grammar is this grammar with the table's substitutions. Both
 parsers produce the same tree type; the tree has no lexicon field.
@@ -190,7 +190,7 @@ honest description of what was built. The language does not inherit
 that. A path is a value of a declared path type, and the scry form is
 refused on anything else.
 
-- **Path type.** The standard subject declares `path ≡ nil ∣ cons seg
+- **Path type.** The standard library declares `path ≡ nil | cons seg
   path`, a list of segments, and `seg` as an enumerated tag type (with
   a data payload where a segment needs one, as Nock's `care` and
   `desk` do). Because `path` is a Tier 1 data type, it is comparable
@@ -210,7 +210,7 @@ refused on anything else.
   expression: `∵/a/b/c` in Unicode, `?^/a/b/c` in ASCII, where `/`
   separates segments. The program declares `seg` (the segment tags,
   capitalized constructors, with a payload where a segment needs one)
-  and `path ≡ Nil ∣ Cons seg path`; a segment word in a literal denotes
+  and `path ≡ Nil | Cons seg path`; a segment word in a literal denotes
   the `seg` constructor whose name is that word with its first letter
   capitalized, so `/nat/three` is `Cons Nat (Cons Three Nil)`, and an
   unknown segment is an error. Inside a quotation the path is quoted
@@ -225,7 +225,7 @@ refused on anything else.
   equality of segment lists; nothing is normalized, which keeps the
   paper's argument about the word problem intact and keeps lookups
   cheap.
-- **What this costs.** One type declaration in the standard subject,
+- **What this costs.** One type declaration in the standard library,
   one check in the expander, and a mount-table convention for resolver
   cores. What it buys is that the namespace is a namespace: prefix
   routing, a place for authority (who answers which prefix), and the
@@ -239,11 +239,18 @@ is code, and Proposition 3.1 says nothing in the calculus can inspect it.
 Axes address *cells*: `[a b]` is the Scott pair `λc. c a b`, whose only
 operation is to hand its components to a selector, so `2@p` is `p K`
 (head), `3@p` is `p (K I)` (tail), and axis `n` is the chain of heads
-and tails Nock's numbering gives (`6@p` is the head of the tail). The
-subject is a nested pair, so wings resolve to axes. This is the paper's
-disanalogy made concrete: in Nock the noun tree is the formula and axes
-address code and data alike; here axes address data only, and code is
-opaque.
+and tails Nock's numbering gives (`6@p` is the head of the tail).
+
+Names are not axes, and this is where the language parts company with
+Nock rather than merely restricting it. A dotted name `a.b` is a
+qualified name looked up in the compile-time table, not a search path
+into a runtime environment: there is no environment to search, because
+bracket abstraction closed every term before the program ran
+(`DESIDERATA.md` item 2). So axes do one job and names do another, and
+neither reaches into the other's. This is the paper's disanalogy made
+concrete: in Nock the noun tree is the formula, axes address code and
+data alike, and names are axes; here axes address data only, code is
+opaque, and names are resolved and gone by the time anything runs.
 
 ## 8. Atoms and free variables
 
@@ -251,8 +258,8 @@ The calculus has no atoms but `S`, `K`, `I`. The `X1`, `X2` of the
 verification probes are host-level uninterpreted constants used at the
 metalevel to observe a term; they are admitted in the test harness and
 nowhere in the language. Free variables do not exist at runtime: bracket
-abstraction closes every term and the subject is the only environment;
-an unresolved name at compile time is an error. There is no integer type
+abstraction closes every term, so there is no environment at all, and an
+unresolved name at compile time is an error. There is no integer type
 for now: Scott numerals serve as fuel and nothing else, and the language
 sticks to the three atoms. (A binary Scott-encoded numeral type with
 runtime jets, in the manner of Vere's atoms, is the obvious later
@@ -260,7 +267,7 @@ addition; it is deliberately not here.)
 
 ## 9. Open items
 
-- Whether subscript fuel (`⟨t⟩₁₀`) or a suffix form (`⟨t⟩@10`, as in
+- Whether subscript fuel (`<t>₁₀`) or a suffix form (`<t>@10`, as in
   ASCII) is better in the Unicode lexicon; the ASCII `@10` is fixed.
 - Whether the case form `▹` is needed at all once types generate their
   own case functions (a datum applied to continuations is already a
@@ -268,5 +275,8 @@ addition; it is deliberately not here.)
 - The glyph choices for `B`, `C`, `W` are placeholders; the constraint
   is single code points that do not collide with APL's meanings for the
   same glyphs, since an APL reader will bring those.
-- Whether wings use `.` (Hoon) or something that does not collide with
-  `λx.e`; the lambda dot is the likelier one to change.
+- Whether qualified names use `.` or something that does not collide
+  with `λx.e`; the lambda dot is the likelier one to change. Also what
+  `a.b` resolves *to*: the equation names the dictionary already carries
+  (`whnfF.step`) are the obvious target, and today the parser accepts
+  the dotted name while the expander rejects it as unresolved.

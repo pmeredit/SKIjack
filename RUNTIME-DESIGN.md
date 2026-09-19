@@ -45,7 +45,7 @@ per-level interpretive overhead.
 - **Jets.** Nock is viable because Vere matches batteries against a
   dashboard of known cores by hash and runs native code. The SKI
   analogue matches expanded subterms against a table of known
-  combinators by structural hash: the standard subject's arms first
+  combinators by structural hash: the standard subject's supercombinators first
   (numerals, lists, `EQ`), then the interpreters. Jetting `whnfF` is the
   decisive one: it is exactly why `+mock` costs nothing per level in
   Nock, and it removes the roughly 10³-per-level overhead the paper
@@ -128,7 +128,7 @@ between them.
 runtime always starts by applying the loaded term to it.** Nothing else
 needs to be known to start a program. The initial subject carries the
 quoted standard library (`SURFACE-LANGUAGE-DESIGN.md` §6b), so this also
-settles who supplies `⟨subject⟩`: the runtime, at boot.
+settles who supplies `<subject>`: the runtime, at boot.
 
 A **kernel** is a core with a declared interface the runtime pulls by
 name, Arvo's shape at small scale:
@@ -207,23 +207,46 @@ hash-consed image format and the bitstring for interchange only.
 
 ## 6. Literature to read first
 
+Most of this note is a re-implementation of work from 1979 to 1985, and
+`avon/DESIGN.md` §14 says so in the form of a table. The reading list:
+
 1. D. A. Turner, "A New Implementation Technique for Applicative
    Languages", *Software: Practice and Experience* 9(1), 1979. The SKI
-   graph-reduction machine.
+   graph-reduction machine. With "Another Algorithm for Bracket
+   Abstraction", *JSL* 44(2), 1979, for the compiler's back end.
 2. R. J. M. Hughes, "Super-combinators: A New Implementation Method for
    Applicative Languages", *ACM Symposium on LISP and Functional
    Programming*, 1982.
 3. T. Johnsson, "Efficient Compilation of Lazy Evaluation", *ACM
    SIGPLAN Symposium on Compiler Construction*, 1984. The G-machine.
-4. M. Naylor and C. Runciman, "The Reduceron Reconfigured", *ICFP 2010*.
-   Graph reduction in hardware.
-5. The Urbit whitepaper (Yarvin, Monk, Dyudin, Pasco, 2016) and the Vere
+   S. L. Peyton Jones, *The Implementation of Functional Programming
+   Languages*, Prentice Hall, 1987, is the standard account of all of it.
+4. **SKIM.** T. J. W. Clarke, P. J. S. Gladstone, C. D. MacLean and
+   A. C. Norman, "SKIM — The S, K, I Reduction Machine", *LISP
+   Conference*, 1980; then W. R. Stoye, T. J. W. Clarke and A. C.
+   Norman, "Some Practical Methods for Rapid Combinator Reduction",
+   *LFP*, 1984, and Stoye's thesis, *The Implementation of Functional
+   Languages Using Custom Hardware*, Cambridge Computer Laboratory
+   TR 81, 1985. This is the direct ancestor: a combinator graph reducer
+   with a fixed set of recognized combinators executed natively, which
+   is jetting under another name and in microcode. Read it before
+   writing §4's stage 1, and read it again before claiming anything in
+   this note is new.
+5. K. Noshita, *IPL* 20(2), 1985, and M. S. Joy, V. J. Rayward-Smith and
+   F. W. Burton, "Efficient Combinator Code", *Computer Languages* 10,
+   1985, for the cost of abstraction in combinators per source symbol —
+   the tradition the paper's atom counts belong to.
+6. M. Naylor and C. Runciman, "The Reduceron Reconfigured", *ICFP 2010*.
+   Graph reduction in hardware, modern.
+7. The Urbit whitepaper (Yarvin, Monk, Dyudin, Pasco, 2016) and the Vere
    source for the jet dashboard's matching and registration discipline.
-6. B. Jay and T. Given-Wilson, "A Combinatory Account of Internal
+8. B. Jay and T. Given-Wilson, "A Combinatory Account of Internal
    Structure", *JSL* 76(3), 2011, §3, for what the runtime is allowed to
-   do that the calculus is not.
+   do that the calculus is not — the one thing on this list that is not
+   an implementation technique, and the only reason the interpreter jet
+   is more than an optimization.
 
-(Entries 1 to 4 are from memory and should be checked against the
+(Entries 1 to 6 are from memory and should be checked against the
 sources before they are cited anywhere.)
 
 ## 7. Relationship to the other repository

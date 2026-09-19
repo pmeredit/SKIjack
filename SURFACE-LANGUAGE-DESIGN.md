@@ -1,4 +1,4 @@
-# Design note: a subject-oriented surface language over SKI
+# Design note: a supercombinator surface language over SKI
 
 *2026-09-16. Follow-up to the paper ~/ski-in-ski/mss.tex, not part of
 it. This note fixes the kernel forms, the ABI, and the compile rules
@@ -48,7 +48,7 @@ form needs thunking.
 - **Recursion** through `Y = S (K (S I I)) (S (S (K S) K) (K (S I I)))`,
   14 atoms, with every recursive definition written as a generator that
   takes its own fixpoint as first argument (`spGen f m acc`, and so on).
-  That is open recursion, and it is the arm-with-self-as-subject
+  That is open recursion, and it is the equation-with-self-as-argument
   convention already.
 - **Interpreters** `whnfF`, `wfQ`, `wfN` (618, 950, 1,066 atoms), the
   unquoter `UQ` (43), and equality on encoded paths `EQ5` (240).
@@ -59,7 +59,7 @@ form needs thunking.
 ## 2. Representation ABI
 
 These decisions are the interface between the compiler and the standard
-subject. They are fixed here so the surface can vary without moving them.
+library. They are fixed here so the surface can vary without moving them.
 
 **Pairs.** `[a b]` is the Scott pair `λc. c a b`. Projections: head
 `p K`, tail `p (K I)`. Axis addressing is Nock's: axis 1 is the whole,
@@ -68,27 +68,42 @@ axis 2 the head, axis 3 the tail, axis `2n` the head of axis `n`, axis
 projections, innermost first; cost is one projection per bit of the
 axis, as in Nock.
 
-**Subject.** Every compiled term is a function of one argument, the
-subject, a nested pair. Wings and names are resolved to axes at compile
-time (faces are a compile-time symbol table, not data). There is no
-lexical environment at runtime; bracket abstraction over the subject
-variable is the closure mechanism.
+**Names and scope.** Names are resolved in a compile-time table and are
+gone before anything runs: an equation is lambda-lifted over its
+parameters and over the sibling equations it calls, the group is tied
+with `Y`, and what
+is left is a closed term whose meaning depends on nothing around it
+(`DESIDERATA.md` item 2). There is no runtime environment to address, so
+names are not axes and a qualified name `a.b` is a name and not a search
+path. Bracket abstraction is the closure mechanism, and it closes over
+the equation's own binders, not over any subject.
 
-**Gates.** A gate is a core `[battery [sample context]]` with one arm,
+**Subject.** The word is kept for exactly one thing: the single argument
+the runtime applies a loaded program to at boot, which carries the
+standard library (`RUNTIME-DESIGN.md` §3b, §4 below). It is an argument,
+not a scope; nothing resolves into it at run time. An earlier draft of
+this note made it the environment for name resolution and built §3
+around that; see the two-things-do-not-transfer note in
+`DESIDERATA.md` §1 for why that is gone.
+
+**Gates** (the ◇ core dialect of §3, not what the implementation
+compiles). A gate is a core `[battery [sample context]]` with one equation,
 following Hoon: the battery is the compiled body, abstracted over the
-core; the sample sits at axis 6 and the context (the subject at the
-point of definition) at axis 7. Calling a gate with an argument
-replaces the sample and pulls the arm: `pull(replace(gate, 6, x))`.
+core; the sample sits at axis 6 and the context at axis 7. Note that
+both of those are axes into a *data* cell the gate carries, which is
+`SYNTAX.md` §7's rule and not name resolution. Calling a gate with an argument
+replaces the sample and pulls it: `pull(replace(gate, 6, x))`.
 (A lighter dialect compiles `|=` to a plain λ by bracket abstraction
 with no core; it is faster and has no `..$`. Both are available from the
 same kernel; the core dialect is the one that makes Nock 9 and `%=`
 meaningful.)
 
-**Cores.** `[battery payload]` with the battery a tuple of arms. Each arm
-is compiled with the whole core as its subject. The core is tied once:
-`core = Y (λself. [ ⟨arm₁[self], …, armₙ[self]⟩ payload ])`. Pulling arm
+**Cores.** `[battery payload]` with the battery a tuple of
+supercombinators. Each equation is lambda-lifted over the whole core and
+receives it as an argument. The core is tied once:
+`core = Y (λself. [ <sc₁[self], …, scₙ[self]> payload ])`. Pulling entry
 `i` is `(πᵢ (head core)) core`. Replacing the payload (`%=`) is building
-a new pair with the same battery; because the battery's arms take the
+a new pair with the same battery; because the battery's entries take the
 core as an argument rather than closing over the payload, no
 recompilation is needed. This is the property the paper's resolver
 lacks: its facts are closed over, so a new fact means re-expanding the
@@ -119,56 +134,67 @@ compile time.
 
 ## 3. Kernel forms and their compile rules
 
-Written as `⟦form⟧ᵤ`, the compilation of a form against subject
-variable `u`; `abs(u, t)` is bracket abstraction of `t` over `u`.
+Written as `⟦form⟧_Γ`, the compilation of a form in the compile-time
+scope `Γ` (a table from names to what they denote: a binder of the
+enclosing equation, a sibling equation, a constructor, a macro); `abs(x, t)` is
+bracket abstraction of `t` over the binder `x`. `Γ` is a compiler data
+structure and has no runtime existence — nothing in the output takes it
+as an argument, and this is what item 2 of `DESIDERATA.md` means.
 
-| form | rule |
-|---|---|
-| axis `+n` | the projection chain for `n`, applied to `u` |
-| wing `a.b` | resolve to an axis at compile time, then as above |
-| cell `[a b]` | `pair ⟦a⟧ᵤ ⟦b⟧ᵤ` |
-| literal (a term as data) | its Scott encoding, a closed term; no `u` |
-| pin `=+ x body` | `⟦body⟧ᵥ [⟦x⟧ᵤ u]`, i.e. body compiled against the extended subject `v = [x u]` |
-| gate `\|= body` | `core([abs(self, ⟦body⟧_self)] [placeholder u])` per §2 |
-| call `(g x)` | `pull(replace(⟦g⟧ᵤ, 6, ⟦x⟧ᵤ))` |
-| core `\|% ++a₁ … ++aₙ --` | `Y (λself. [⟨abs(self,⟦a₁⟧_self), …⟩ u])` |
-| pull `a.c` | `(πₐ (head ⟦c⟧ᵤ)) ⟦c⟧ᵤ` |
-| replace `%= c a x` | `pair (head ⟦c⟧ᵤ) (set(payload, axis(a), ⟦x⟧ᵤ))` |
-| case `?- x [%cᵢ fields] bodyᵢ` | `⟦x⟧ᵤ (λ fields. ⟦body₁⟧) … (λ fields. ⟦bodyₙ⟧)` in declaration order, each body compiled against the subject extended by its fields |
-| if `?: c a b` | `⟦c⟧ᵤ ⟦a⟧ᵤ ⟦b⟧ᵤ` |
-| loop `\|- body`, `$` | a one-arm core whose arm is `body`; `$` is a pull on it |
-| arm `++ name body` | a member of the enclosing core's battery; compiled once, shared as one node, reached by a pull at runtime |
-| macro `+* name body` | expanded at each use site at compile time; no runtime cost to reach, duplicated per use; see §3a |
-| eval `.* fuel term` | `whnfF ⟦fuel⟧ᵤ ⟦term⟧ᵤ`, a `Maybe`; under a virtualizing interpreter, `wfQ E …` or `wfN E …` with their outcome types |
-| scry `.^ path` | the leaf `Scry ⟨path⟩` in the object language; stuck under host reduction, resolved only under `wfQ`/`wfN` |
+The rows marked ▸ are what the implementation compiles today; the rows
+marked ◇ are the Hoon-shaped core dialect of §2, kept here because the
+core/gate layout is still the intended shape for `%=`-style work, and
+not built. Every rule that once read "compiled against the subject
+extended by …" now reads as ordinary lexical binding, because that is
+both what the expander does and what bracket abstraction is for.
+
+| | form | rule |
+|---|---|---|
+| ▸ | name `a` | what `Γ` says: a binder (stays a variable until abstraction), a sibling equation (its supercombinator), a constructor, or an error |
+| ▸ | qualified name `a.b` | a name with a dot; looked up in `Γ`, never resolved to a position (`SYNTAX.md` §7) |
+| ▸ | axis pick `n@ p` | the projection chain for `n`, applied to `⟦p⟧_Γ` — a *data* cell, not a scope |
+| ▸ | cell `[a b]` | `pair ⟦a⟧_Γ ⟦b⟧_Γ` |
+| ▸ | literal (a term as data) | its Scott encoding, a closed term |
+| ▸ | lambda `\x.e` | `abs(x, ⟦e⟧_{Γ,x})` |
+| ▸ | equation `f x₁ … xₙ = body` | `abs(x₁, … abs(xₙ, ⟦body⟧_{Γ,x…}))`, lambda-lifted over the sibling equations it calls and tied with `Y` for recursion; one supercombinator, one shared node |
+| ▸ | core `name params := { equations }` | the equations above, tied as a group; the name is a namespace for them (§7), not a runtime pair |
+| ▸ | case `e \|> { cᵢ bᵢ }` | `⟦e⟧_Γ (λ fields. ⟦b₁⟧) … (λ fields. ⟦bₙ⟧)` in declaration order, each body compiled in `Γ` extended by its own fields as ordinary binders |
+| ▸ | macro `name :=* body` | expanded at each use site at compile time; no runtime cost to reach, duplicated per use; see §3a |
+| ▸ | eval `<t>@n` | `whnfF ⟦n⟧ ⟦<t>⟧`, a `Maybe`; under a virtualizing interpreter, `wfQ E …` or `wfN E …` with their outcome types |
+| ▸ | scry `?^/a/b` | the leaf `Scry <path>` in the object language; stuck under host reduction, resolved only under `wfQ`/`wfN` |
+| ◇ | gate `\|= body` | `core([abs(self, ⟦body⟧_self)] [placeholder payload])` per §2 |
+| ◇ | call `(g x)` | `pull(replace(⟦g⟧_Γ, 6, ⟦x⟧_Γ))` |
+| ◇ | pull `a:c` | `(πₐ (head ⟦c⟧_Γ)) ⟦c⟧_Γ` |
+| ◇ | replace `%= c a x` | `pair (head ⟦c⟧_Γ) (set(payload, axis(a), ⟦x⟧_Γ))` |
+| ◇ | pin `=+ x body` | a one-binder abstraction applied to `⟦x⟧_Γ`; the earlier draft made this an extension of a subject with a shift rule, which is exactly what item 2 no longer claims |
 
 Everything in the table is either an application, a pair, a projection,
 a Scott constructor, or bracket abstraction, so every program compiles
-to a closed `{S,K,I}` term applied to the standard subject.
+to a closed `{S,K,I}` term — closed outright, not closed relative to a
+subject it must be applied to.
 
 ### 3a. Arms versus macros
 
 The two definition keywords mirror Hoon's `++` and `+*`, and the cost
-model decides between them. An arm is one node in the DAG, shared by
+model decides between them. A supercombinator is one node in the DAG, shared by
 every use, and costs a pull to reach: the projections of its axis plus
 one application. A macro is expanded into every use site, so it costs
 nothing to reach and is duplicated per use. Small things, the derived
 combinators, booleans, projections, and the sugar of §3b, want to be
 macros; large things, `EQ`, the interpreters, the standard subject's
-library, want to be arms. The kernel table above is the whole compiler;
+library, want to be supercombinators. The kernel table above is the whole compiler;
 most of a comfortable surface is macros over it: `?:` over `?-`, `=/` as
-pin plus face, `|-` as a one-arm core, and so on. That is how the
+pin plus face, `|-` as a one-equation core, and so on. That is how the
 compiler stays small and how the surface can grow without touching it.
 
 **Hygiene is a decision, and the default is hygienic.** If a macro body
-is expanded before wings are resolved, its names bind at the use site
-and capture the caller's faces, which is what Hoon's `+*` does and is
-occasionally wanted. If wings in the body are resolved at the definition
-site and the expansion carries axes rather than names, the macro is
-hygienic. The default is hygienic, because in a subject-passing language
-a capture is invisible in the source and shows up only as a wrong axis;
-a separate, clearly marked capturing form is available for the cases
-that want it.
+is expanded before its names are resolved, they bind at the use site and
+capture whatever the caller has in scope, which is what Hoon's `+*` does
+and is occasionally wanted. If the body's names are resolved at the
+definition site, the macro is hygienic. The default is hygienic, because
+a capture is invisible in the source and shows up only as a body silently
+reading the wrong binding; a separate, clearly marked capturing form
+(`:=!`) is available for the cases that want it.
 
 ### 3b. Derived combinators and the basis as a declaration
 
@@ -184,7 +210,7 @@ interpreter's own core: 151 atoms over BCKW against 249 over SKI, about
 40% smaller. But a leaf is not free. Each added constructor is one more
 continuation in every encoded node, so every leaf encoding grows by
 about two atoms, every case form over the type grows, and the
-interpreter gains an arm per leaf (`B` and `C` need three arguments, `W`
+interpreter gains an equation per leaf (`B` and `C` need three arguments, `W`
 two). This is the paper's outcome-type growth as an engineering cost.
 Whether it pays depends on how often `B` and `C` occur in compiled
 output relative to all leaves; for Turner-style abstraction they
@@ -203,15 +229,25 @@ first serious program to write in the surface, and its size relative to
 
 ## 4. The standard subject
 
-The subject every program is compiled against is a nested pair holding,
-at fixed axes:
+The library the runtime hands a program at boot (§2, **Subject**): a
+nested pair holding, at fixed axes, the entries below. Two things follow
+from item 2 of `DESIDERATA.md` and are worth stating before the list. A
+*level-0* name from this library is resolved at compile time and compiles
+to its term or to a shared supercombinator node — it is not projected out of anything
+at run time, and nothing in a compiled program applies itself to this
+pair to find its own names. What the pair is *for* is boot and level 1:
+the runtime supplies it once, and its quoted image `<subject>` is the
+shared library a level-1 program addresses (§6b), where projection is
+legitimate because a quoted subject is data.
+
+The entries:
 
 - `S`, `K`, `I` as values, and `Y`;
 - pairs and projections, booleans, Scott lists with fold, `Maybe`,
   numerals with successor, predecessor, addition, equality;
 - `EQ` on encoded terms (the 4- and 5-constructor versions);
 - `UQ`, the unquoter;
-- `whnfF`, `wfQ`, `wfN` as arms, the analogue of `++nock` in `hoon.hoon`;
+- `whnfF`, `wfQ`, `wfN` as supercombinators, the analogue of `++nock` in `hoon.hoon`;
 - the constructors and case forms of the built-in types (object terms,
   outcomes, oracle answers).
 
@@ -226,12 +262,12 @@ is not portable to another, as in Nock.
 2. A value of a data type (any Scott-encoded type declared in the
    language) may be compared with `EQ`, passed to `.*`, stored in a
    namespace, and re-encoded one level up by a definable data
-   transformation `⟨t⟩ ↦ ⟨⟨t⟩⟩`.
-3. A value of function type (a gate, a core, an arm) can be applied and
+   transformation `<t> ↦ <<t>>`.
+3. A value of function type (a gate, a core, a supercombinator) can be applied and
    nothing else *at runtime*. It cannot be compared, stored as a fact,
    or reified into data by any form the language offers: no `!=`, no
    `!>`, no `.=` on functions. This does not forbid *compile-time*
-   quotation of an arm: `⟨whnfF three ⟨I K⟩⟩` is the paper's T2, and it
+   quotation of a supercombinator: `<whnfF three <I K>>` is the paper's T2, and it
    is rule 1, expand-then-encode at compile time, not a runtime
    operation on a live value. Stage A therefore applies the data check
    at `EQ`, at a namespace fact, and at a scry path, and checks a
@@ -258,18 +294,18 @@ is why nothing at level 0 may use one.
 
 **Level 1, virtualized.** The term is quoted at compile time and the
 executable the host reduces is the interpreter's loop applied to its
-own arguments and the encoded program: `whnfF n ⟨program⟩` for the base
-interpreter, `wfN E n ⟨program⟩` for one that takes a resolver. The
+own arguments and the encoded program: `whnfF n <program>` for the base
+interpreter, `wfN E n <program>` for one that takes a resolver. The
 arity is the interpreter's, not a constant of the form. Scry is live
 only under an interpreter whose alphabet has `Scry` and whose loop
 takes a resolver; fuel is explicit; the outcome is the interpreter's
 result type. Any declaration that uses `∵` is level 1, and the compiler
 packages it so without being asked. The default interpreter is a core
 named `whnfF` declared in the program (or, once the standard subject
-exists, the subject's `wfN`); `interp ⊢ …` selects another. A
+exists, the library's `wfN`); `interp ⊢ …` selects another. A
 quotation with fuel is a level-1 *declaration*: it appears as a
-definition's right-hand side, and a bare `⟨t⟩` (a datum) may also be
-nested inside another quotation; a quotation inside an arm body is not
+definition's right-hand side, and a bare `<t>` (a datum) may also be
+nested inside another quotation; a quotation inside an equation body is not
 a form.
 
 This is Urbit's split: the kernel runs raw Nock, userspace runs under
@@ -282,7 +318,7 @@ interpreter (the paper's T2).
 
 ### 6a. What codegen targets, exactly
 
-Every interpreter reimplements the ISA: its `S`, `K`, `I` arms are its
+Every interpreter reimplements the ISA: its `S`, `K`, `I` equations are its
 own code, reduced by the host or by the interpreter below it. So the
 alphabet a level-1 program is written in is the *object type of the
 interpreter it will run under*, a declared type such as
@@ -307,8 +343,10 @@ therefore both true, of different steps.
 Inside `⟪ ⟫` names resolve differently from outside it, and the compiler
 keeps two tables:
 
-- **The level-0 table:** the standard subject's schema. Names are axes
-  into the subject the host applies the term to.
+- **The level-0 table:** names to what they denote — a binder, an equation,
+  a constructor, a macro, a library entry. Resolution is compile-time and
+  positional in nothing; a library name compiles to its term or to the one
+  shared node for that supercombinator.
 - **The level-1 table:** the object type's constructors, plus the
   *quoted* standard subject. (At level 0 a declared type's constructors
   are ordinary Scott constructors and may be applied freely; the
@@ -317,13 +355,16 @@ keeps two tables:
   there even when the object type declares leaves of those names; inside
   a quotation the same three names denote the leaves.) A level-1 program does not share the
   level-0 subject (it is data at a different level); it receives the
-  same library as a Scott-encoded value, `⟨subject⟩`, computed once and
+  same library as a Scott-encoded value, `<subject>`, computed once and
   shared by reference across every level-1 program. Names inside `⟪ ⟫`
-  that are library names resolve to axes into `⟨subject⟩`; names that
-  are constructors of the object type resolve to the constructors; and
-  application inside `⟪ ⟫` is the `App` constructor.
+  that are library names resolve to a projection into `<subject>` —
+  which is axis addressing of *data*, in the sense of `SYNTAX.md` §7,
+  not name resolution against an environment, since a quoted subject is
+  a Scott datum like any other; names that are constructors of the object
+  type resolve to the constructors; and application inside `⟪ ⟫` is the
+  `App` constructor.
 
-**State of implementation.** The shared `⟨subject⟩` is the destination,
+**State of implementation.** The shared `<subject>` is the destination,
 not yet a reachable state: there is no standard subject to quote. Until
 there is, a library name inside a quotation is inlined as its expanded
 level-0 term and quoted in place, exactly as the artifact writes
@@ -353,19 +394,19 @@ atom (`python/tests/corpus/interp-*.ski`).
   The declaration generates the constructors, the case form, the spine
   walker `sp` and the rebuilder `rb` at that arity (the paper's
   `spQ`/`rbQ` are the five-constructor instances).
-- **One step arm per leaf.** The application constructor has no arm and
+- **One step equation per leaf.** The application constructor has none and
   cannot: it is the spine the walker descends, not a head that fires,
   and the walker hands the collected arguments to the leaf it reaches.
-  The standard subject supplies default arms for leaves *named* `S`,
+  The standard subject supplies default equations for leaves *named* `S`,
   `K`, `I`, which is the one place a name rather than a shape decides
   what the ISA is; a leaf named otherwise gets no default and must be
   written. So an interpreter that only adds a leaf writes only that
-  leaf's arm, which is the paper's one-site authorship as a compiler
+  leaf's equation, which is the paper's one-site authorship as a compiler
   convenience. If the core omits `step`, it is generated as `step m =
   sp m nil stepC₁ … stepCₙ` in declaration order.
-- **Two more types: the step outcome `O` and the result `R`.** The arms
+- **Two more types: the step outcome `O` and the result `R`.** The equations
   return `O`; the loop returns `R`; they differ because the loop has a
-  timeout the arms cannot express. Both are found by shape among the
+  timeout the equations cannot express. Both are found by shape among the
   non-object types: exactly one constructor carrying one field of the
   object type; other constructors may carry other fields (a blocked
   path). Of the outcome-shaped declarations, the *last two* are `O` and
@@ -376,8 +417,8 @@ atom (`python/tests/corpus/interp-*.ski`).
   the outcome-shaped declaration that is neither `O` nor `R`; its
   payload-carrying constructor is a hit and its last nullary
   constructor is "not yet". The resolver is a core parameter, written
-  after the core's name (`wfN e ≔ { … }`), threaded to every arm, and
-  applied to the loop first, so `wfN E ⊢ ⟨t⟩ₙ` is `loop E n ⟨t⟩`.
+  after the core's name (`wfN e ≔ { … }`), threaded to every equation, and
+  applied to the loop first, so `wfN E ⊢ <t>ₙ` is `loop E n <t>`.
 - **The loop, generated from `O` and `R`** unless written. Rule: peel one
   `Suc` per attempt, returning `R`'s last terminal at `Zero`; apply
   `step m` to one continuation per `O` constructor in declaration order,
@@ -386,35 +427,35 @@ atom (`python/tests/corpus/interp-*.ski`).
   `R`'s term-carrying constructor applied to the current term, and each
   further constructor of `O` maps to the constructor of `R` at the same
   position, handed the same payload if it carries one (`PendingN p`
-  becomes `RBlockN p`). For `maybe ≡ Nothing ∣ Just term` this yields the paper's
-  `wf1`/`wfGen`; for `outcome ≡ Stepped term ∣ Done ∣ Errd` with
-  `result ≡ RVal term ∣ RErr ∣ RTime` it yields `wf5Abs1`/`wf5Abs`. A
-  written `loop` in the core overrides the generated one; because arms
-  are tied with per-arm fixpoints, a written loop passes itself to its
+  becomes `RBlockN p`). For `maybe ≡ Nothing | Just term` this yields the paper's
+  `wf1`/`wfGen`; for `outcome ≡ Stepped term | Done | Errd` with
+  `result ≡ RVal term | RErr | RTime` it yields `wf5Abs1`/`wf5Abs`. A
+  written `loop` in the core overrides the generated one; because each
+  equation is tied with its own fixpoint, a written loop passes itself to its
   helper as the artifact does (`loop1 f m n2 = step m (Just m) (f n2)`,
   `loop n m = n Nothing (loop1 loop m)`) rather than recursing mutually.
 - **What fuel counts.** Fuel `k` permits `k` step-attempts, and the last
   attempt must be the one that finds no redex; a term that needs `s`
   contractions therefore needs fuel `s + 1`, and fuel `s` times out.
-  This is the whole difference between `⟨flipA [K I] K⟩₄₀` (`Nothing`)
-  and `⟨…⟩₄₁` (`Just ⟨I⟩`), and between `⟨K I Err⟩₁` (`RTime`) and
-  `⟨K I Err⟩₂` (`RVal ⟨I⟩`); the generated loop implements it and the
+  This is the whole difference between `<flipA [K I] K>₄₀` (`Nothing`)
+  and `<…>₄₁` (`Just <I>`), and between `<K I Err>₁` (`RTime`) and
+  `<K I Err>₂` (`RVal <I>`); the generated loop implements it and the
   tests pin both boundaries.
 - **The core's name denotes its loop.** `whnfF ⊢ …` applies it.
 
-Two interpreters with the same three types and different arms are the
+Two interpreters with the same three types and different equations are the
 paper's `wf5Abs`/`wf5Omg`; an interpreter with an added constructor and
 a resolver parameter is `wfQ`. The conformance tests for a user
-interpreter whose `S`, `K`, `I` arms claim to be the ISA are the paper's
+interpreter whose `S`, `K`, `I` equations claim to be the ISA are the paper's
 T0–T2 counts.
 
 ## 7. Cores as the internalized namespace
 
 The paper's blocking resolver is host-side because its facts are closed
 over. Under the core ABI the resolver is `[battery facts]` where the
-battery has one arm, lookup, compiled against the core, and `facts` is
+battery has one equation, lookup, compiled against the core, and `facts` is
 an encoded list of pairs. Learning a fact is `%=` with `cons`; the
-resume loop becomes a one-arm core whose arm runs `wfN` with the
+resume loop becomes a one-equation core whose equation runs `wfN` with the
 resolver, inspects the outcome, and on a block pulls itself with the
 extended resolver. The whole loop is then one closed term, which is the
 "pure-SKI driver" the paper leaves open. The decoder from an encoded
@@ -436,18 +477,18 @@ computation.
 
 ## 9. Worked example
 
-The interpreter's step function, in an illustrative syntax, compiled
-against a subject holding the object-term type and the spine walker:
+The interpreter's step function, in an illustrative syntax, with the
+object-term type and the spine walker in scope:
 
 ```
 +$  term  [%s] [%k] [%i] [%app t=term u=term]
 +$  step  [%stepped t=term] [%done] [%errd]
 ++  step
   |=  m=term
-  (spine m ~ arm-s arm-k arm-i)
+  (spine m ~ step-s step-k step-i)
 ```
 
-`spine` is `spQ`, the arms are `stepSQ`, `stepKQ`, `stepIQ`, and the
+`spine` is `spQ`, the equations are `stepSQ`, `stepKQ`, `stepIQ`, and the
 whole compiles to the 569-atom `step` of the paper. The fuel loop is a
 `|-` over it with a Scott numeral as sample. Writing the interpreter in
 the surface and checking that it compiles to a term with the same
@@ -457,17 +498,18 @@ surface is the second.
 
 ## 10. What is decided here and what is left to syntax
 
-Decided: Scott pairs as cells with Nock axes; subject-passing with
-compile-time wing resolution; Hoon's gate layout; cores tied with `Y`
-and pulled by projection; declaration order as continuation order;
+Decided: Scott pairs as cells with Nock axes addressing *data only*;
+compile-time name resolution with no runtime environment, the subject
+kept for the boot argument alone (§2); Hoon's gate layout for the core
+dialect; cores tied with `Y`; declaration order as continuation order;
 Scott numerals; the quotation rules of §5; the two modes of §6; two
-definition keywords, arm and macro, with hygienic macros by default
+definition keywords, equation and macro, with hygienic macros by default
 (§3a); derived combinators as names and macros, with an extended basis
 available only as a separate type declaration (§3b).
 
 Left to syntax: runes versus S-expressions; whether lexical names exist
-alongside wings; how declaration order is made visible; whether `.*` is
-a form or a subject arm; how the data/function line of §5 is written;
+alongside qualified names, and what `a.b` resolves to; how declaration
+order is made visible; whether `.*` is a form or a library supercombinator; how the data/function line of §5 is written;
 and how the mode of §6 is marked; how the capturing macro form is
 marked; and how a program declares which basis it targets.
 

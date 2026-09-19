@@ -16,7 +16,7 @@ case and no recursion.
 
 Unicode:
 ```
-nat ≡ Zero ∣ Suc nat
+nat ≡ Zero | Suc nat
 
 arith ≔ {
   inc n   = Suc n
@@ -44,7 +44,7 @@ arith := {
 **Codegen.** The case form is application of the datum to its
 continuations, so `dec n = n ▹ {…}` is `n Zero I` before abstraction.
 
-| arm | atoms | term |
+| equation | atoms | term |
 |---|---|---|
 | `Zero` | 1 | `K` |
 | `Suc` | 8 | `S (K K) (S (K (S I)) K)` |
@@ -72,25 +72,26 @@ size of the `App` constructor's encoding.
 
 Unicode / ASCII (identical, no glyph used):
 ```
-C f x y = f y x               -- as an arm: a term, shared, applied at runtime
+C f x y = f y x               -- as an equation: one shared term, applied at runtime
 flip f x y ≔* f y x           -- as a macro: rewritten at the use site   (ASCII: :=*)
 
-flipK₁ x y = C K x y          -- uses the arm
+flipK₁ x y = C K x y          -- uses it
 flipK₂ x y = flip K x y       -- uses the macro
 ```
 
 | definition | atoms | term |
 |---|---|---|
 | `C` | 10 | `S (S (K S) (S (K K) S)) (K K)` |
-| `flipK₁` (arm) | 11 | `S (S (K S) (S (K K) S)) (K K) K` |
+| `flipK₁` (equation) | 11 | `S (S (K S) (S (K K) S)) (K K) K` |
 | `flipK₂` (macro) | 5 | `S (K (S K)) K` |
 
 Both `flipK` variants applied to `X1 X2` reduce to `X2`; `C K X1 X2`
 reduces to `X2`. The macro version is smaller because `C` never exists
-at runtime, the rewrite happened in the source; the arm version is one
-shared node reused by every caller. This is the arm-versus-macro cost
-model of `SURFACE-LANGUAGE-DESIGN.md` §3a: macros erase combinators,
-arms share them.
+at runtime, the rewrite happened in the source; the equation's version
+is one shared node reused by every caller. This is the
+supercombinator-versus-macro cost model of
+`SURFACE-LANGUAGE-DESIGN.md` §3a: macros erase combinators,
+supercombinators share them.
 
 ## 3. A macro over pairs, and level 0 versus level 1
 
@@ -109,7 +110,7 @@ swap p :=* [3@p 2@p]
 flipA q = swap q
 ```
 
-Macro expansion rewrites the arm to `pair (tl q) (hd q)`; the macro is
+Macro expansion rewrites the equation to `pair (tl q) (hd q)`; the macro is
 gone. Then:
 
 - **Level 0 (unquoted):** `flipA` is 29 atoms,
@@ -126,15 +127,15 @@ gone. Then:
 
 Unicode:
 ```
-term5 ≡ S ∣ K ∣ I ∣ App term5 term5 ∣ Err
-outcome ≡ Stepped term5 ∣ Done ∣ Errd
-result ≡ RVal term5 ∣ RErr ∣ RTime
+term5 ≡ S | K | I | App term5 term5 | Err
+outcome ≡ Stepped term5 | Done | Errd
+result ≡ RVal term5 | RErr | RTime
 
 omega = S I I (S I I)
 
 wf5Abs ≔ { stepErr acc = Errd }
 wf5Omg ≔ { stepErr acc = omega }
-answer ≔ wf5Abs ⊢ ⟨K I Err⟩₅
+answer ≔ wf5Abs ⊢ <K I Err>₅
 ```
 
 ASCII:
@@ -153,26 +154,26 @@ answer := wf5Abs |- <K I Err>@5
 The object type is found by shape (`App` is the one constructor with two
 fields of its own type); its declaration generates the five
 constructors, the case form, and this arity's `sp` and `rb`. `stepS`,
-`stepK`, `stepI` are the default arms for the leaves of those names;
+`stepK`, `stepI` are the default equations for the leaves of those names;
 `step` and the fuel loop are generated from the three declarations
-(`SURFACE-LANGUAGE-DESIGN.md` §6c). `stepErr` is the one arm each core
+(`SURFACE-LANGUAGE-DESIGN.md` §6c). `stepErr` is the one equation each core
 writes, and the two cores differ in nothing else.
 
 **Measured** (`python/tests/test_interpreter.py`): `wf5Abs` compiles to
 768 atoms and `wf5Omg` to 771, each definition byte-identical to the
 paper's hand-written terms (`st5Abs` 684, `st5Omg` 687, `sp5` 166,
-`rb5` 81, `q5S` 275, `q5K` 121, `q5I` 107, the two arms 4 and 7, `omega`
+`rb5` 81, `q5S` 275, `q5K` 121, `q5I` 107, the two equations 4 and 7, `omega`
 6). With the paper's encoder and fuel 20 the T3 table reproduces
 exactly: `Err` and `Err K` give ERR under `wf5Abs` and host divergence
 under `wf5Omg`; `K I Err` and `I K` give VAL under both, with identical
 contraction counts (574 and 438); `Ω` gives TIME under both (10,130).
-The base interpreter, `term ≡ S ∣ K ∣ I ∣ App term term`, `maybe ≡
-Nothing ∣ Just term`, `whnfF ≔ { step m = sp m nil stepS stepK stepI }`,
+The base interpreter, `term ≡ S | K | I | App term term`, `maybe ≡
+Nothing | Just term`, `whnfF ≔ { step m = sp m nil stepS stepK stepI }`,
 compiles to the paper's 618-atom `whnfF` byte for byte, with every
 intermediate definition identical (`step` 569, `sp` 126, `rb` 74,
-`stepS` 237, `stepK` 105, `stepI` 92), and `whnfF 3 ⟨I K⟩` reaches weak
+`stepS` 237, `stepK` 105, `stepI` 92), and `whnfF 3 <I K>` reaches weak
 head normal form in exactly 340 host contractions, decoding to
-`Just ⟨K⟩`. The `answer` line is measured too: it peels to `RVal` and
+`Just <K>`. The `answer` line is measured too: it peels to `RVal` and
 decodes to `I` in 574 host contractions at fuel 5, and to `RVal` at fuel
 2 as well, since `K I Err` needs one contraction plus the no-redex
 check; fuel 1 gives `RTime`.
@@ -181,10 +182,10 @@ check; fuel 1 gives `RTime`.
 
 Unicode:
 ```
-seg  ≡ Nat ∣ Two ∣ Three
-path ≡ Nil ∣ Cons seg path
-resolve ≔ ⦃/nat/two ↦ ⟨I⟩, /nat/three ↦ ⟨K⟩⦄
-answer  ≔ wfN resolve ⊢ ⟨∵/nat/three⟩₁₀
+seg  ≡ Nat | Two | Three
+path ≡ Nil | Cons seg path
+resolve ≔ ns{/nat/two ↦ <I>, /nat/three ↦ <K>}
+answer  ≔ wfN resolve ⊢ <∵/nat/three>₁₀
 ```
 
 ASCII:
@@ -201,7 +202,7 @@ type, quoted like any other datum; `?^` wraps it in `Scry`. The
 namespace literal compiles to a resolver that compares the incoming path
 against each key with `EQ5` on the encodings, answering `OJust` for the
 first match and `ONotYet` otherwise. `wfN resolve` is the blocking loop
-applied to that resolver; the `I` arm fires, the walker finds `Scry` in
+applied to that resolver; the `I` equation fires, the walker finds `Scry` in
 head position and applies the resolver to the path, and `OJust <K>`
 splices and reduction continues to `<K>`. A path with no fact blocks,
 and the driver re-runs from the top once the fact is added, which is
@@ -217,10 +218,10 @@ maybe === Nothing | Just term
 whnfF := { step m = sp m nil stepS stepK stepI }
 ```
 
-The long one is the same interpreter with nothing generated, every arm
+The long one is the same interpreter with nothing generated, every equation
 written in the surface. It is exactly the text the compiler emits for
 the short one (`render(generate(parse …))`), so the two are one program;
-the Unicode spelling differs only in `≡`, `∣`, and `≔`:
+the Unicode spelling differs only in `≡`, `|`, and `≔`:
 
 ```
 term === S | K | I | App term term
@@ -251,10 +252,10 @@ stepS args = args Nothing stepS1
 Reading it top to bottom: `sp` walks a term to its head leaf, handing
 each leaf's continuation the accumulated argument list and pushing each
 application's argument onto that list; `rb` re-applies a list of
-arguments to a head; each `step` arm takes the argument list, returns
+arguments to a head; each `step` equation takes the argument list, returns
 `Nothing` when it has too few arguments (the head is in weak head normal
 form), and otherwise performs one contraction as data (`App (App x z)
-(App y z)` is the `S` rule) and rebuilds; `step` installs the three arms
+(App y z)` is the `S` rule) and rebuilds; `step` installs the three equations
 in the declaration order of the leaves; `loop` peels one `Suc` per
 attempt and returns `Nothing` at `Zero`; `loop1` runs a step and either
 returns the current term as the value or continues with the rebuilt one.
@@ -267,7 +268,7 @@ the artifact's; `whnfF 3 <I K>` reaches weak head normal form in exactly
 340 host contractions. The long program is that compilation rendered
 back to source, and compiling it as plain user source with generation
 switched off gives the same 618-atom term byte for byte, with `sp`,
-`rb`, and the three arms each identical to the hand-written originals,
+`rb`, and the three equations each identical to the hand-written originals,
 and T0 at 340 (`python/tests/corpus/interp-whnff-written.*.ski`, both
 spellings). Parsing that file back gives the same tree as generating
 from the short source, so the two cannot drift apart.
