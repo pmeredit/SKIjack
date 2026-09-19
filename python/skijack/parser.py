@@ -13,9 +13,9 @@ Two decisions the sketch leaves open (both documented in the README):
     declarations, then the real parse runs with that table.  An
     undeclared constructor in a branch is a :class:`ParseError`.
 
-(b) A core body ``{ arms }`` and a namespace literal ``ns{ ... }`` are
+(b) A core body ``{ equations }`` and a namespace literal ``ns{ ... }`` are
     told apart by the ``ns`` prefix, which the ASCII lexer munches as one
-    NSOPEN token (Unicode spells it ``⦃``).
+    NSOPEN token (Unicode spells it ``ns{``).
 
 A namespace literal's facts use MAPSTO (``=>`` / ``↦``); a signature uses
 ARROW (``->`` / ``→``).  They are different token kinds in both lexicons,
@@ -33,7 +33,9 @@ __all__ = ["ParseError", "parse", "parse_ascii", "parse_unicode",
            "collect_ctors", "parse_expr_text"]
 
 
-class ParseError(Exception):
+from .errors import SkijackError
+
+class ParseError(SkijackError):
     pass
 
 
@@ -130,7 +132,7 @@ class _Parser:
 
     def end_of_decl(self, also: Tuple[str, ...] = ()) -> None:
         """A declaration ends at a newline or end of input; inside a core
-        a closing ``}`` ends the last arm too, so a one-arm core fits on
+        a closing ``}`` ends the last equation too, so a one-equation core fits on
         one line."""
         t = self.toks[self.i]
         if t.kind in ("NEWLINE", "EOF") or t.kind in also:
@@ -161,7 +163,7 @@ class _Parser:
         if op in ("MACRO", "CMACRO"):
             return self.macro(names, capturing=(op == "CMACRO"))
         if op == "EQUALS":
-            return self.arm(names)
+            return self.equation(names)
         t = self.toks[self.i]
         raise ParseError(
             f"line {t.line}, column {t.col}: not a declaration "
@@ -230,7 +232,7 @@ class _Parser:
         if len(names) != 1:
             raise ParseError(
                 f"{names[0]!r}: ':=' takes binders only for a core "
-                f"('name p := {{ arms }}'); write an arm with '=' or a macro "
+                f"('name p := {{ equations }}'); write an equation with '=' or a macro "
                 f"with ':=*'")
         self._take_names(1)
         self.expect("ASSIGN")
@@ -240,7 +242,7 @@ class _Parser:
 
     def core(self, name: str, params=()) -> A.Core:
         self.expect("LBRACE")
-        arms: List[A.Arm] = []
+        equations: List[A.Equation] = []
         while True:
             self.skip_newlines()
             if self.toks[self.i].kind == "RBRACE":
@@ -252,11 +254,11 @@ class _Parser:
             if op != "EQUALS":
                 t = self.toks[self.i]
                 raise ParseError(
-                    f"line {t.line}: a core body holds arms "
+                    f"line {t.line}: a core body holds equations "
                     f"'name binder* = body'")
-            arms.append(self.arm(anames, also=("RBRACE",)))
+            equations.append(self.equation(anames, also=("RBRACE",)))
         self.end_of_decl()
-        return A.Core(name, tuple(arms), tuple(params))
+        return A.Core(name, tuple(equations), tuple(params))
 
     def macro(self, names: List[str], capturing: bool) -> A.Macro:
         self._take_names(len(names))
@@ -265,12 +267,12 @@ class _Parser:
         self.end_of_decl()
         return A.Macro(names[0], tuple(names[1:]), body, capturing)
 
-    def arm(self, names: List[str], also: Tuple[str, ...] = ()) -> A.Arm:
+    def equation(self, names: List[str], also: Tuple[str, ...] = ()) -> A.Equation:
         self._take_names(len(names))
         self.expect("EQUALS")
         body = self.expr()
         self.end_of_decl(also)
-        return A.Arm(names[0], tuple(names[1:]), body)
+        return A.Equation(names[0], tuple(names[1:]), body)
 
     # --- expressions -----------------------------------------------------
 

@@ -11,7 +11,8 @@ import sys
 
 from aviary_kernel.terms import pretty
 
-from .check import CheckError, check_program
+from .check import check_program
+from .errors import SkijackError
 from .dictionary import from_expansion, lift, structural_hash
 from .expand import PRELUDE_NAMES, expand_program
 from .parser import parse
@@ -51,7 +52,26 @@ def main(argv=None) -> int:
     ap.add_argument("--max-steps", type=int, default=5_000_000,
                     help="host contraction cap (default 5,000,000)")
     args = ap.parse_args(argv)
+    try:
+        return _run(args)
+    except (SkijackError, OSError, UnicodeDecodeError, RecursionError) as ex:
+        print(f"{args.file}: {_message(ex)}", file=sys.stderr)
+        return 1
 
+
+def _message(ex: BaseException) -> str:
+    """A line a user can act on, for the four families that reach here."""
+    if isinstance(ex, RecursionError):
+        return ("expression nests too deeply for this compiler; see the "
+                "depth limit in skijack.expand")
+    if isinstance(ex, UnicodeDecodeError):
+        return "not valid UTF-8"
+    if isinstance(ex, OSError):
+        return ex.strerror or str(ex)
+    return str(ex)
+
+
+def _run(args) -> int:
     lx = _lexicon_of(args.file, args.lexicon)
     with open(args.file, encoding="utf-8") as fh:
         text = fh.read()
@@ -74,11 +94,7 @@ def main(argv=None) -> int:
             print(f"{args.file}: {p}", file=sys.stderr)
         return 1
 
-    try:
-        exp = expand_program(program)
-    except CheckError as ex:                       # pragma: no cover
-        print(f"{args.file}: {ex}", file=sys.stderr)
-        return 1
+    exp = expand_program(program)
 
     if args.expand:
         for name in sorted(exp.terms):

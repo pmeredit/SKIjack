@@ -59,7 +59,7 @@ def test_inc_is_identical_to_suc(built, lx):
 @pytest.mark.parametrize("lx", LEXICONS)
 @pytest.mark.parametrize("name,atoms", [("add", 42), ("sub", 43)])
 def test_section1_reference_sizes(built, lx, name, atoms):
-    """The reference construction of EXAMPLES.md (per-arm generator tied
+    """The reference construction of EXAMPLES.md (per-equation generator tied
     with Y).  The probes are mandatory; these sizes are a reference."""
     assert built[("sec1-nat", lx)].size(name) == atoms
 

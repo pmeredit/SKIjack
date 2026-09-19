@@ -55,7 +55,9 @@ __all__ = [
 ]
 
 
-class DictionaryError(Exception):
+from .errors import SkijackError
+
+class DictionaryError(SkijackError):
     """A name registered twice with two different terms."""
 
 #: the table's version; a change to any entry is a change to this
@@ -72,7 +74,7 @@ MIN_LIFT_SIZE = 3
 #: names in the table, but lift and lower **reserve the names for the
 #: ISA**: at level 0 they are the combinators (SURFACE-LANGUAGE-DESIGN.md
 #: §6b), so a lifted ``S`` must lower back to the atom, not to ``encS``.
-_ISA = ("S", "K", "I")
+from .abi import ISA as _ISA
 
 
 def canonical(term: Term) -> str:
@@ -198,7 +200,7 @@ class Dictionary:
         """hash -> name, for the entries lift may name.
 
         Two names for one term (``zero`` and ``nil`` are both ``K``;
-        ``dec`` and ``arith.dec`` are one arm reached two ways) resolve
+        ``dec`` and ``arith.dec`` are one equation reached two ways) resolve
         by preferring the unqualified name, then the shorter, then
         alphabetically -- so the table is deterministic and the name it
         picks is the one a reader would write.  ``exclude`` drops names,
@@ -224,14 +226,14 @@ def from_expansion(exp: Expansion, *, include: Optional[Sequence[str]] = None,
     """Register a compiled program's names.
 
     Every name the expander produced -- the prelude, the Scott
-    constructors of every declared type, every arm and every core's loop
-    -- plus ``Y``, which the environment supplies and every recursive arm
+    constructors of every declared type, every equation and every core's loop
+    -- plus ``Y``, which the environment supplies and every recursive equation
     is tied with.
     """
     d = dictionary if dictionary is not None else Dictionary()
     if "Y" not in d:
         d.register("Y", _ski_expand(Atom("Y"), exp.env), tier=1,
-                   note="the fixpoint every recursive arm is tied with")
+                   note="the fixpoint every recursive equation is tied with")
     names = exp.terms if include is None else include
     for name in names:
         if name in exp.terms:

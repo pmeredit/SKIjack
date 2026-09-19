@@ -9,13 +9,13 @@ alphabet a virtualizing interpreter walks -- it also generates, here:
 * the **spine walker** ``sp`` and the **rebuilder** ``rb`` at that type's
   arity, in the artifact's shape (``resS``/``resK``/``resI``, ``spApp``,
   ``rb1``, tied with the environment's ``Y``);
-* **default step arms** for leaf constructors named ``S``, ``K`` and
+* **default step equations** for leaf constructors named ``S``, ``K`` and
   ``I``, so that an interpreter which only adds a leaf writes only that
-  leaf's arm (§6c, third bullet);
+  leaf's equation (§6c, third bullet);
 * a **fuel loop** for each interpreter core, from the declared step
   outcome type and result type.
 
-Everything is generated as *surface syntax* -- ``ast.Arm`` declarations
+Everything is generated as *surface syntax* -- ``ast.Equation`` declarations
 appended to the program -- and then compiled by the ordinary expander.
 Nothing here emits a term, so the generated code is exactly as
 inspectable (and as renderable) as hand-written source, and the D-forms
@@ -40,7 +40,9 @@ __all__ = [
 ]
 
 
-class GenerateError(Exception):
+from .errors import SkijackError
+
+class GenerateError(SkijackError):
     pass
 
 
@@ -57,8 +59,8 @@ def _ap(*parts) -> A.Expr:
     return out
 
 
-def _arm(name: str, binders: Sequence[str], body: A.Expr) -> A.Arm:
-    return A.Arm(name, tuple(binders), body)
+def _arm(name: str, binders: Sequence[str], body: A.Expr) -> A.Equation:
+    return A.Equation(name, tuple(binders), body)
 
 
 # ----------------------------------------------------------- shape discovery
@@ -152,7 +154,7 @@ def _carrier(d: A.TypeDecl, tname: str) -> Optional[Tuple[A.Ctor, Tuple[A.Ctor, 
     rest), or ``None`` if ``d`` does not have that shape.
 
     The other constructors may be nullary *or* carry fields of some other
-    type: ``outcome ≡ SteppedN term5 ∣ DoneN ∣ ErrdN ∣ PendingN path``
+    type: ``outcome ≡ SteppedN term5 | DoneN | ErrdN | PendingN path``
     is outcome-shaped, and ``PendingN``'s payload is what makes blocking
     expressible at all.
     """
@@ -191,7 +193,7 @@ def find_loop_types(program: A.Program, obj: ObjectType) -> LoopTypes:
     else:
         # The *last two* outcome-shaped declarations are O and R.  A
         # program that also declares an oracle answer type -- which is
-        # outcome-shaped too, `oanswer ≡ OJust term5 ∣ ONothing ∣ ONotYet`
+        # outcome-shaped too, `oanswer ≡ OJust term5 | ONothing | ONotYet`
         # -- declares it before them.
         od, stepped, o_rest = cands[-2]
         rd, value, _ = cands[-1]
@@ -263,8 +265,8 @@ class AnswerType:
     """The oracle's answer type: what a resolver returns.
 
     Found by shape, as the outcome-shaped declaration that is neither the
-    step outcome nor the result -- `maybe ≡ Nothing ∣ Just term5` for
-    `wfQ`, `oanswer ≡ OJust term5 ∣ ONothing ∣ ONotYet` for `wfN`.
+    step outcome nor the result -- `maybe ≡ Nothing | Just term5` for
+    `wfQ`, `oanswer ≡ OJust term5 | ONothing | ONotYet` for `wfN`.
     """
     decl: A.TypeDecl
     hit: A.Ctor              #: carries the answer
@@ -327,9 +329,9 @@ def find_path_type(program: A.Program) -> Optional[PathType]:
 
 def is_interpreter_core(core: A.Core, obj: ObjectType) -> bool:
     """A core is an interpreter core when it writes any part of the
-    interface: ``step``, ``loop``, or a step arm for a leaf of the object
+    interface: ``step``, ``loop``, or a step equation for a leaf of the object
     type (``stepErr`` for the leaf ``Err``)."""
-    names = {arm.name for arm in core.arms}
+    names = {equation.name for equation in core.equations}
     if "step" in names or "loop" in names:
         return True
     # every constructor, not only the leaves, so that `stepApp` is seen
@@ -354,13 +356,13 @@ def _default_step_names(leaf: str) -> List[str]:
     return [f"step{leaf}{i}" for i in range(arity, 0, -1)] + [f"step{leaf}"]
 
 
-def _walker_and_rebuilder(obj: ObjectType) -> List[A.Arm]:
+def _walker_and_rebuilder(obj: ObjectType) -> List[A.Equation]:
     """``sp``, ``rb`` and their helpers, at this type's arity."""
     leaves = obj.leaves
     conts = [f"c{i}" for i in range(len(leaves))]
-    out: List[A.Arm] = []
+    out: List[A.Equation] = []
     # res<C> acc c0 .. cn = c_j acc      -- hand the collected args to the
-    # caller's arm for the leaf the spine bottomed out at
+    # caller's equation for the leaf the spine bottomed out at
     for j, c in enumerate(leaves):
         out.append(_arm("res" + c.name, ["acc"] + conts,
                         _ap(conts[j], "acc")))
@@ -384,13 +386,13 @@ def _walker_and_rebuilder(obj: ObjectType) -> List[A.Arm]:
     return out
 
 
-def _default_step_arms(obj: ObjectType, lt: LoopTypes) -> List[A.Arm]:
-    """The ISA's own step arms, parameterized over the outcome type:
+def _default_step_equations(obj: ObjectType, lt: LoopTypes) -> List[A.Equation]:
+    """The ISA's own step equations, parameterized over the outcome type:
     "no redex" is O's first terminal and a contraction is wrapped in O's
     term-carrying constructor."""
     stepped, done, app = lt.stepped.name, lt.done.name, obj.app.name
     have = {c.name for c in obj.leaves}
-    out: List[A.Arm] = []
+    out: List[A.Equation] = []
     if "I" in have:
         out += [
             _arm("stepI1", ["x", "rest"], _ap(stepped, _ap("rb", "x", "rest"))),
@@ -418,15 +420,15 @@ def _default_step_arms(obj: ObjectType, lt: LoopTypes) -> List[A.Arm]:
     return out
 
 
-def _core_step_arm(obj: ObjectType, core: A.Core) -> A.Arm:
+def _core_step_equation(obj: ObjectType, core: A.Core) -> A.Equation:
     """``step m = sp m nil stepC1 ... stepCn``, leaves in declaration
     order -- which is the order the walker hands them over.
 
-    A step arm the *core* defines is passed the core's parameters, since
-    an arm reference is raw; a program-level default arm is not.  That is
+    A step equation the *core* defines is passed the core's parameters, since
+    an equation reference is raw; a program-level default equation is not.  That is
     the artifact's ``spQ m nil stepSQ stepKQ stepIQ (stepScQ e)``.
     """
-    mine = {arm.name for arm in core.arms}
+    mine = {equation.name for equation in core.equations}
     slots = []
     for c in obj.leaves:
         nm = "step" + c.name
@@ -435,7 +437,7 @@ def _core_step_arm(obj: ObjectType, core: A.Core) -> A.Arm:
                 _ap(_n("sp"), _n("m"), _n("nil"), *slots))
 
 
-def _core_loop_arms(lt: LoopTypes, core: A.Core) -> List[A.Arm]:
+def _core_loop_equations(lt: LoopTypes, core: A.Core) -> List[A.Equation]:
     """The fuel loop, from O and R.
 
     ``loop1 f m n2 = step m <one continuation per O constructor, in
@@ -467,10 +469,10 @@ def _core_loop_arms(lt: LoopTypes, core: A.Core) -> List[A.Arm]:
 
 def names_generation_adds(program: A.Program):
     """What :func:`generate` will supply, without generating it: the
-    program-level names, and the extra arms of each interpreter core.
+    program-level names, and the extra equations of each interpreter core.
 
     The checker needs this so it can be a pass over the *parsed* program
-    -- it must not call an arm undefined when generation is about to
+    -- it must not call an equation undefined when generation is about to
     define it.
     """
     obj = find_object_type(program)
@@ -480,13 +482,13 @@ def names_generation_adds(program: A.Program):
     for d in program.decls:
         if isinstance(d, A.TypeDecl):
             taken.update(c.name for c in d.ctors)
-        elif isinstance(d, (A.Arm, A.Macro, A.Def, A.Core)):
+        elif isinstance(d, (A.Equation, A.Macro, A.Def, A.Core)):
             taken.add(d.name)
     top = {n for n in generated_names(obj) if n not in taken}
     per_core = {}
     for d in program.decls:
         if isinstance(d, A.Core) and is_interpreter_core(d, obj):
-            have = {arm.name for arm in d.arms}
+            have = {equation.name for equation in d.equations}
             extra = set()
             if "step" not in have:
                 extra.add("step")
@@ -512,10 +514,10 @@ def generate(program: A.Program) -> A.Program:
             taken.update(c.name for c in d.ctors)
         elif isinstance(d, (A.Sig,)):
             pass
-        elif isinstance(d, (A.Arm, A.Macro, A.Def, A.Core)):
+        elif isinstance(d, (A.Equation, A.Macro, A.Def, A.Core)):
             taken.add(d.name)
 
-    extra = [x for x in _walker_and_rebuilder(obj) + _default_step_arms(obj, lt)
+    extra = [x for x in _walker_and_rebuilder(obj) + _default_step_equations(obj, lt)
              if x.name not in taken]
 
     decls: List[A.Decl] = []
@@ -528,14 +530,14 @@ def generate(program: A.Program) -> A.Program:
 
 
 def _fill_core(core: A.Core, obj: ObjectType, lt: LoopTypes) -> A.Core:
-    have = {arm.name for arm in core.arms}
-    added: List[A.Arm] = []
+    have = {equation.name for equation in core.equations}
+    added: List[A.Equation] = []
     if "step" not in have:
-        added.append(_core_step_arm(obj, core))
+        added.append(_core_step_equation(obj, core))
     if "loop" not in have:
         if "loop1" in have:
             raise GenerateError(
                 f"core {core.name!r} writes 'loop1' but not 'loop'; write "
                 f"both or neither")
-        added += _core_loop_arms(lt, core)
-    return A.Core(core.name, tuple(list(core.arms) + added), core.params)
+        added += _core_loop_equations(lt, core)
+    return A.Core(core.name, tuple(list(core.equations) + added), core.params)

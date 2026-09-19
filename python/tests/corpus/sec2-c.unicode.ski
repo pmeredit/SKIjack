@@ -1,6 +1,6 @@
 ⍝ EXAMPLES.md section 2: a combinator three ways.
-C f x y = f y x               ⍝ as an arm: a term, shared, applied at runtime
+C f x y = f y x               ⍝ as an equation: a term, shared, applied at runtime
 flip f x y ≔* f y x           ⍝ as a macro: rewritten at the use site
 
-flipK₁ x y = C K x y          ⍝ uses the arm
+flipK₁ x y = C K x y          ⍝ uses the equation
 flipK₂ x y = flip K x y       ⍝ uses the macro

@@ -1,6 +1,5 @@
 import os
 import pathlib
-import threading
 
 import pytest
 
@@ -33,8 +32,35 @@ def corpus():
 #: body is executed with the ``__main__`` block split off, which is the
 #: whole of the dependency: nothing is written back and the artifact's
 #: own Environment is never handed to the expander.
-ARTIFACT_DIR = pathlib.Path("/Users/neal/ski-in-ski")
+#: Where the first paper's artifact lives.  Overridable, because a third
+#: of this suite is the cross-check against it and that third is the part
+#: that establishes the compiler's output is *correct* rather than merely
+#: self-consistent.  When the path is wrong those tests skip, and a
+#: silent skip of the oracle is worse than a loud failure -- see
+#: ``pytest_sessionstart`` below.
+ARTIFACT_DIR = pathlib.Path(
+    os.environ.get("SKIJACK_ARTIFACT_DIR", "~/ski-in-ski")).expanduser()
 ARTIFACT = ARTIFACT_DIR / "tower_harness.py"
+
+
+def pytest_sessionstart(session):
+    """Refuse to run a suite whose oracle is absent, unless asked.
+
+    Without this the suite reports success on any machine but the
+    author's while quietly dropping every comparison against the
+    hand-built artifact.  Set ``SKIJACK_ARTIFACT_DIR`` to the checkout,
+    or ``SKIJACK_ALLOW_SKIP=1`` to accept the reduced suite knowingly.
+    """
+    if ARTIFACT.exists() or os.environ.get("SKIJACK_ALLOW_SKIP") == "1":
+        return
+    raise pytest.UsageError(
+        f"the oracle artifact is not at {ARTIFACT_DIR}.\n"
+        f"Roughly a third of this suite compares compiled terms against "
+        f"the hand-built artifact of the companion paper; without it "
+        f"those tests skip and the remainder checks the compiler only "
+        f"against itself.\n"
+        f"Set SKIJACK_ARTIFACT_DIR=/path/to/ski-in-ski, or "
+        f"SKIJACK_ALLOW_SKIP=1 to run the reduced suite deliberately.")
 
 
 def _load(path):

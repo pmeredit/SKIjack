@@ -16,10 +16,10 @@ The passes, in order:
 3. **cells and picks** -- ``[a b]`` is ``pair a b``; ``2@p`` is ``hd p``
    and ``3@p`` is ``tl p``, and axis ``n`` in general is the chain of
    heads and tails Nock's numbering gives.
-4. **cores** -- per-arm fixpoints: a self-recursive arm becomes
-   ``Y gen`` where ``gen`` takes the arm itself as its first parameter,
+4. **cores** -- per-equation fixpoints: a self-recursive equation becomes
+   ``Y gen`` where ``gen`` takes the equation itself as its first parameter,
    the way ``tower_harness.py`` writes ``wfGen``/``whnfF``.  A
-   non-recursive arm is a plain ``D``.  Every lambda (a case branch with
+   non-recursive equation is a plain ``D``.  Every lambda (a case branch with
    binders, or a ``\\x.e``) is lambda-lifted into its own supercombinator
    over the enclosing binders that occur free in it.
 5. **bracket abstraction** -- ``aviary_kernel.abstraction.expand`` by way
@@ -34,6 +34,7 @@ from typing import Dict, List, Optional, Sequence, Set, Tuple
 from aviary_kernel.abstraction import (bracket_abstract as _bracket_abstract,
                                        expand as _ski_expand)
 from aviary_kernel.birds import BY_NAME
+from .abi import TIER1_NAMES
 from aviary_kernel.environment import Environment
 from aviary_kernel.terms import Atom, App as KApp, Term, pretty, size
 
@@ -52,7 +53,9 @@ __all__ = ["ExpandError", "Expansion", "expand_program", "PRELUDE_NAMES",
 FUEL_PLACEHOLDER = Atom("\x00fuel")
 
 
-class ExpandError(Exception):
+from .errors import SkijackError
+
+class ExpandError(SkijackError):
     pass
 
 
@@ -86,7 +89,7 @@ PRELUDE_NAMES = ("pair", "hd", "tl", "nil", "cons", "zero", "suc")
 ISA_NAMES = ("S", "K", "I")
 
 #: aviary kernel built-ins a program may name directly
-_BUILTIN_OK = set(BY_NAME)
+_BUILTIN_OK = set(TIER1_NAMES)
 
 
 # ---------------------------------------------------------------- utilities
@@ -198,7 +201,22 @@ def _rename_binders(binder: str, body: A.Expr, sub: Dict[str, A.Expr]):
 
 # ------------------------------------------------------------- pass 1: macros
 
+#: nested macro unfoldings on one path before we call it a non-fixpoint
 _MACRO_FUEL = 100
+
+#: structural nesting of one expression.  Deep corpus expressions reach
+#: 11, so this is generous; it exists because the passes below this one
+#: (``lower``, ``_Codegen.gen``, ``free_names``, ``substitute``) recurse,
+#: and without it a deep enough expression is a ``RecursionError`` from
+#: somewhere internal rather than a located error.
+_MAX_DEPTH = 256
+
+#: total macro substitutions in one declaration.  ``_MACRO_FUEL`` bounds
+#: the *depth* of unfolding and not the *work*: a chain of macros each
+#: using its predecessor twice costs 2^n substitutions at depth n, so a
+#: forty-line file can run for hours and yield a one-atom term.  This
+#: bounds the work.
+_MACRO_WORK = 200_000
 
 
 def _spine(e: A.Expr) -> Tuple[A.Expr, List[A.Expr]]:
@@ -210,9 +228,32 @@ def _spine(e: A.Expr) -> Tuple[A.Expr, List[A.Expr]]:
     return e, args
 
 
-def expand_macros(e: A.Expr, macros: Dict[str, A.Macro], depth: int = 0) -> A.Expr:
-    if depth > _MACRO_FUEL:
-        raise ExpandError("macro expansion did not reach a fixpoint")
+def expand_macros(e: A.Expr, macros: Dict[str, A.Macro], depth: int = 0,
+                  unfold: int = 0, budget: Optional[Dict[str, int]] = None
+                  ) -> A.Expr:
+    """Expand macros to a fixpoint.
+
+    Three separate limits, because they fail in three different ways.
+    ``depth`` is structural nesting of the expression; ``unfold`` counts
+    macro substitutions along one path; ``budget`` counts substitutions
+    in total.  Conflating the first two is what once reported a
+    102-application expression in a macro-free program as ``macro
+    expansion did not reach a fixpoint``.
+    """
+    if budget is None:
+        budget = {"work": _MACRO_WORK}
+    if depth > _MAX_DEPTH:
+        raise ExpandError(
+            f"expression nests more than {_MAX_DEPTH} levels deep")
+    if unfold > _MACRO_FUEL:
+        raise ExpandError(
+            f"macro expansion did not reach a fixpoint after {_MACRO_FUEL} "
+            f"nested unfoldings")
+    if budget["work"] <= 0:
+        raise ExpandError(
+            f"macro expansion exceeded {_MACRO_WORK:,} substitutions; a "
+            f"macro that uses another twice costs exponentially in its "
+            f"nesting depth")
     if isinstance(e, A.Name):
         if e.name in macros:
             m = macros[e.name]
@@ -220,7 +261,8 @@ def expand_macros(e: A.Expr, macros: Dict[str, A.Macro], depth: int = 0) -> A.Ex
                 raise ExpandError(
                     f"macro {m.name!r} takes {len(m.params)} parameter(s); "
                     f"partial application of a macro is an error")
-            return expand_macros(m.body, macros, depth + 1)
+            budget['work'] -= 1
+            return expand_macros(m.body, macros, depth, unfold + 1, budget)
         return e
     if isinstance(e, A.App):
         head, args = _spine(e)
@@ -235,28 +277,31 @@ def expand_macros(e: A.Expr, macros: Dict[str, A.Macro], depth: int = 0) -> A.Ex
                 raise ExpandError(
                     f"macro {m.name!r} takes {n} parameter(s) but got "
                     f"{len(args)}; partial application of a macro is an error")
-            args = [expand_macros(x, macros, depth + 1) for x in args]
+            args = [expand_macros(x, macros, depth + 1, unfold, budget)
+                    for x in args]
             body = substitute(m.body, dict(zip(m.params, args[:n])))
-            out = expand_macros(body, macros, depth + 1)
+            budget['work'] -= 1
+            out = expand_macros(body, macros, depth, unfold + 1, budget)
             for extra in args[n:]:
                 out = A.App(out, extra)
             return out
-        return A.App(expand_macros(e.fn, macros, depth + 1),
-                     expand_macros(e.arg, macros, depth + 1))
+        return A.App(expand_macros(e.fn, macros, depth + 1, unfold, budget),
+                     expand_macros(e.arg, macros, depth + 1, unfold, budget))
     if isinstance(e, A.Cell):
-        return A.Cell(tuple(expand_macros(x, macros, depth + 1) for x in e.items))
+        return A.Cell(tuple(expand_macros(x, macros, depth + 1, unfold, budget)
+                            for x in e.items))
     if isinstance(e, A.Pick):
-        return A.Pick(e.axis, expand_macros(e.expr, macros, depth + 1))
+        return A.Pick(e.axis, expand_macros(e.expr, macros, depth + 1, unfold, budget))
     if isinstance(e, A.Lambda):
         inner = {k: m for k, m in macros.items() if k != e.param}
-        return A.Lambda(e.param, expand_macros(e.body, inner, depth + 1))
+        return A.Lambda(e.param, expand_macros(e.body, inner, depth + 1, unfold, budget))
     if isinstance(e, A.Case):
         branches = []
         for cname, binders, body in e.branches:
             inner = {k: m for k, m in macros.items() if k not in binders}
             branches.append((cname, binders,
-                             expand_macros(body, inner, depth + 1)))
-        return A.Case(expand_macros(e.scrutinee, macros, depth + 1),
+                             expand_macros(body, inner, depth + 1, unfold, budget)))
+        return A.Case(expand_macros(e.scrutinee, macros, depth + 1, unfold, budget),
                       tuple(branches))
     if isinstance(e, (A.Quote, A.Scry, A.NsLit)):
         raise ExpandError(
@@ -280,23 +325,29 @@ def axis_chain(n: int) -> List[str]:
     return ["hd" if b == "0" else "tl" for b in bits]
 
 
-def lower(e: A.Expr, ctors: Dict[str, Tuple[str, int, int]],
-          types: Dict[str, A.TypeDecl]) -> A.Expr:
-    """Passes 2 and 3: case forms, cells and picks become applications."""
+def desugar(e: A.Expr, ctors: Dict[str, Tuple[str, int, int]],
+            types: Dict[str, A.TypeDecl]) -> A.Expr:
+    """Passes 2 and 3: case forms, cells and picks become applications.
+
+    Named ``desugar`` and not ``lower`` because ``lower`` is the name of
+    a law: ``lower`` takes a syntax tree to its closed term
+    (``DESIDERATA.md`` item 4, and :func:`skijack.dictionary.lower`).
+    This pass is tree to tree.
+    """
     if isinstance(e, A.Name):
         return e
     if isinstance(e, A.App):
-        return A.App(lower(e.fn, ctors, types), lower(e.arg, ctors, types))
+        return A.App(desugar(e.fn, ctors, types), desugar(e.arg, ctors, types))
     if isinstance(e, A.Lambda):
-        return A.Lambda(e.param, lower(e.body, ctors, types))
+        return A.Lambda(e.param, desugar(e.body, ctors, types))
     if isinstance(e, A.Cell):
-        items = [lower(x, ctors, types) for x in e.items]
+        items = [desugar(x, ctors, types) for x in e.items]
         out = items[-1]
         for x in reversed(items[:-1]):
             out = A.App(A.App(A.Name("pair"), x), out)
         return out
     if isinstance(e, A.Pick):
-        out = lower(e.expr, ctors, types)
+        out = desugar(e.expr, ctors, types)
         for step in axis_chain(e.axis):
             out = A.App(A.Name(step), out)
         return out
@@ -327,10 +378,10 @@ def _lower_case(e: A.Case, ctors, types) -> A.Expr:
             f"case over {tname!r} is missing branch(es) for "
             f"{', '.join(missing)}; case must be complete "
             f"(DESIDERATA.md item 11, Stage A)")
-    out = lower(e.scrutinee, ctors, types)
+    out = desugar(e.scrutinee, ctors, types)
     for c in decl.ctors:                     # declaration order is the ABI
         binders, body = seen[c.name]
-        k = lower(body, ctors, types)
+        k = desugar(body, ctors, types)
         for b in reversed(binders):
             k = A.Lambda(b, k)
         out = A.App(out, k)
@@ -429,7 +480,7 @@ class _Codegen:
 
     def with_resolver(self, resolve) -> "_Codegen":
         """The same code generator under a different name environment --
-        one per core, so a core's arms see their siblings first."""
+        one per core, so a core's equations see their siblings first."""
         return _Codegen(self.env, resolve, self.helper_names)
 
     def gen(self, e: A.Expr, scope: Sequence[str], owner: str) -> Term:
@@ -485,7 +536,7 @@ def _fresh_name(base: str, env: Environment, _i: int) -> str:
 def _mangle(name: str, used: Set[str]) -> str:
     """A backend name for a source name.
 
-    The aviary kernel refuses to shadow a built-in bird, so an arm called
+    The aviary kernel refuses to shadow a built-in bird, so an equation called
     ``C`` is defined as ``Cc`` (the form recorded in ``EXAMPLES.md``'s
     codegen notes).  The mangling never changes the compiled term.
     """
@@ -507,7 +558,7 @@ def expand_program(program: A.Program, env: Optional[Environment] = None,
     (``DESIDERATA.md`` item 11), so the output is the same whether
     checking is on or off.  With ``generate_forms`` (the default),
     :func:`skijack.generate.generate` then adds the type-generated forms
-    -- the walker, the rebuilder, the default ISA step arms and each
+    -- the walker, the rebuilder, the default ISA step equations and each
     interpreter core's ``step`` and fuel loop -- as surface declarations.
     """
     if env is None:
@@ -522,7 +573,7 @@ def expand_program(program: A.Program, env: Optional[Environment] = None,
     types: Dict[str, A.TypeDecl] = {}
     ctors: Dict[str, Tuple[str, int, int]] = {}
     macros: Dict[str, A.Macro] = {}
-    arms: List[Tuple[str, A.Arm, Optional[str]]] = []   # (name, arm, core)
+    equations: List[Tuple[str, A.Equation, Optional[str]]] = []   # (name, equation, core)
     cores: Dict[str, A.Core] = {}
     defs: List[A.Def] = []
     qdefs: List[A.Def] = []            # level-1: name := [I |-] <t>[@n]
@@ -539,24 +590,24 @@ def expand_program(program: A.Program, env: Optional[Environment] = None,
             macros[d.name] = d
         elif isinstance(d, A.Sig):
             pass                       # Stage B; parsed, kept, ignored
-        elif isinstance(d, A.Arm):
-            arms.append((d.name, d, None))
+        elif isinstance(d, A.Equation):
+            equations.append((d.name, d, None))
         elif isinstance(d, A.Core):
             if d.name in cores:
                 raise ExpandError(f"core {d.name!r} declared twice")
             cores[d.name] = d
-            seen_arm: Set[str] = set()
-            for arm in d.arms:
-                if arm.name in seen_arm:
+            seen_equation: Set[str] = set()
+            for equation in d.equations:
+                if equation.name in seen_equation:
                     raise ExpandError(
-                        f"core {d.name!r} defines arm {arm.name!r} twice")
-                seen_arm.add(arm.name)
-                # a core's parameters are prepended to every arm's binder
-                # list and are in scope in every arm body; references
-                # between arms stay raw, so the parameters are passed
+                        f"core {d.name!r} defines equation {equation.name!r} twice")
+                seen_equation.add(equation.name)
+                # a core's parameters are prepended to every equation's binder
+                # list and are in scope in every equation body; references
+                # between equations stay raw, so the parameters are passed
                 # explicitly, which is the artifact's `stepScQ e` shape
-                arms.append((arm.name,
-                             A.Arm(arm.name, d.params + arm.binders, arm.body),
+                equations.append((equation.name,
+                             A.Equation(equation.name, d.params + equation.binders, equation.body),
                              d.name))
         elif isinstance(d, A.Def):
             if isinstance(d.expr, (A.Quote, A.NsLit)):
@@ -583,13 +634,13 @@ def expand_program(program: A.Program, env: Optional[Environment] = None,
     env.define_rule("suc", ("n", "z", "sc"), K_(v("sc"), v("n")))
 
     # --- backend names.  Program-level names (constructors, top-level
-    # arms, definitions, the prelude) share one namespace; a core's arms
+    # equations, definitions, the prelude) share one namespace; a core's equations
     # get their own, so two interpreter cores can each have a `step`.
     source_names: List[str] = []
     for tdecl in types.values():
         for c in tdecl.ctors:
             source_names.append(c.name)
-    for name, _arm, core in arms:
+    for name, _arm, core in equations:
         if core is None:
             source_names.append(name)
     for d in defs + qdefs:
@@ -607,31 +658,31 @@ def expand_program(program: A.Program, env: Optional[Environment] = None,
         backend[nm] = _mangle(nm, used)
         used.add(backend[nm])
 
-    #: (core, arm) -> backend name, and core -> {arm name}
-    arm_backend: Dict[Tuple[str, str], str] = {}
-    core_arms: Dict[str, Set[str]] = {c: set() for c in cores}
-    for name, _arm, core in arms:
+    #: (core, equation) -> backend name, and core -> {equation name}
+    equation_backend: Dict[Tuple[str, str], str] = {}
+    core_equations: Dict[str, Set[str]] = {c: set() for c in cores}
+    for name, _arm, core in equations:
         if core is None:
             continue
-        core_arms[core].add(name)
-        arm_backend[(core, name)] = _mangle(f"{core}_{name}", used)
-        used.add(arm_backend[(core, name)])
+        core_equations[core].add(name)
+        equation_backend[(core, name)] = _mangle(f"{core}_{name}", used)
+        used.add(equation_backend[(core, name)])
 
     # an interpreter core's own name denotes its fuel loop
     for cname, core in cores.items():
-        if (cname, "loop") in arm_backend and cname not in backend:
-            backend[cname] = arm_backend[(cname, "loop")]
+        if (cname, "loop") in equation_backend and cname not in backend:
+            backend[cname] = equation_backend[(cname, "loop")]
 
     def resolver(core: Optional[str]):
         """Name resolution inside ``core`` (``None`` at top level):
-        binders, then this core's sibling arms, then program-level names,
+        binders, then this core's sibling equations, then program-level names,
         then the aviary built-ins.  ``S``, ``K`` and ``I`` are always the
         ISA at level 0 (``SURFACE-LANGUAGE-DESIGN.md`` §6b)."""
         def resolve(nm: str) -> Optional[Term]:
             if nm in ISA_NAMES:
                 return a(nm)
-            if core is not None and nm in core_arms[core]:
-                return a(arm_backend[(core, nm)])
+            if core is not None and nm in core_equations[core]:
+                return a(equation_backend[(core, nm)])
             if nm in backend:
                 return a(backend[nm])
             if nm in _BUILTIN_OK:
@@ -654,17 +705,17 @@ def expand_program(program: A.Program, env: Optional[Environment] = None,
 
     cg = _Codegen(env, resolve)
 
-    # --- passes 1..3 on every arm body, then codegen
-    lowered: Dict[Tuple[Optional[str], str], A.Arm] = {}
-    for name, arm, core in arms:
-        body = expand_macros(arm.body, macros)
-        body = lower(body, ctors, types)
-        lowered[(core, name)] = A.Arm(name, arm.binders, body)
+    # --- passes 1..3 on every equation body, then codegen
+    lowered: Dict[Tuple[Optional[str], str], A.Equation] = {}
+    for name, equation, core in equations:
+        body = expand_macros(equation.body, macros)
+        body = desugar(body, ctors, types)
+        lowered[(core, name)] = A.Equation(name, equation.binders, body)
 
     def _key_of(core: Optional[str], nm: str):
-        """Which arm a name refers to from inside ``core``: a sibling
-        first, then a top-level arm."""
-        if core is not None and nm in core_arms[core] and (core, nm) in lowered:
+        """Which equation a name refers to from inside ``core``: a sibling
+        first, then a top-level equation."""
+        if core is not None and nm in core_equations[core] and (core, nm) in lowered:
             return (core, nm)
         if (None, nm) in lowered:
             return (None, nm)
@@ -672,8 +723,8 @@ def expand_program(program: A.Program, env: Optional[Environment] = None,
 
     def _dep_keys(key):
         core, _name = key
-        arm = lowered[key]
-        free = free_names(arm.body) - set(arm.binders)
+        equation = lowered[key]
+        free = free_names(equation.body) - set(equation.binders)
         out_ = set()
         for nm in free:
             if nm in ISA_NAMES:
@@ -683,40 +734,40 @@ def expand_program(program: A.Program, env: Optional[Environment] = None,
                 out_.add(k)
         return out_
 
-    # --- pass 4: recursion.  Per-arm fixpoint; mutual recursion is refused.
+    # --- pass 4: recursion.  Per-equation fixpoint; mutual recursion is refused.
     for key in lowered:
         for okey in _dep_keys(key):
             if okey == key:
                 continue
             if key in _dep_keys(okey):
                 raise ExpandError(
-                    f"arms {key[1]!r} and {okey[1]!r} are mutually recursive; "
-                    f"this expander ties one fixpoint per arm and cannot "
+                    f"equations {key[1]!r} and {okey[1]!r} are mutually recursive; "
+                    f"this expander ties one fixpoint per equation and cannot "
                     f"compile mutual recursion yet")
 
-    for key, arm in lowered.items():
+    for key, equation in lowered.items():
         core, name = key
-        bname = backend[name] if core is None else arm_backend[key]
+        bname = backend[name] if core is None else equation_backend[key]
         gen = cg.with_resolver(resolver(core))
         recursive = key in _dep_keys(key)
         if recursive:
-            selfp = _fresh("f", set(arm.binders) | free_names(arm.body))
-            body = substitute(arm.body, {name: A.Name(selfp)})
-            scope = [selfp] + list(arm.binders)
+            selfp = _fresh("f", set(equation.binders) | free_names(equation.body))
+            body = substitute(equation.body, {name: A.Name(selfp)})
+            scope = [selfp] + list(equation.binders)
             gen_name = _mangle(bname + "Gen", used)
             used.add(gen_name)
             term = gen.gen(body, scope, bname)
             env.define_rule(gen_name, tuple(scope), term)
             env.define_alias(bname, K_(a("Y"), a(gen_name)))
         else:
-            scope = list(arm.binders)
-            term = gen.gen(arm.body, scope, bname)
+            scope = list(equation.binders)
+            term = gen.gen(equation.body, scope, bname)
             env.define_rule(bname, tuple(scope), term)
 
     # --- plain definitions (``name := expr``)
     for d in defs:
         body = expand_macros(d.expr, macros)
-        body = lower(body, ctors, types)
+        body = desugar(body, ctors, types)
         term = cg.gen(body, [], backend[d.name])
         env.define_alias(backend[d.name], term)
 
@@ -733,18 +784,18 @@ def expand_program(program: A.Program, env: Optional[Environment] = None,
 
     def expand_all() -> None:
         """Expand every level-0 name.  Run again after pass 6, because a
-        level-0 arm may name a datum a quotation defines, and that alias
+        level-0 equation may name a datum a quotation defines, and that alias
         only exists once pass 6 has built it."""
         for nm in names:
             t = _ski_expand(a(backend[nm]), env)
             out.terms[nm] = t
             out.sizes[nm] = size(t)
-        # core arms are always reachable as "core.arm", and as the bare
+        # core equations are always reachable as "core.equation", and as the bare
         # name when that name is unambiguous across the whole program
         for (core_, name_) in lowered:
             if core_ is None:
                 continue
-            t = _ski_expand(a(arm_backend[(core_, name_)]), env)
+            t = _ski_expand(a(equation_backend[(core_, name_)]), env)
             out.terms[f"{core_}.{name_}"] = t
             out.sizes[f"{core_}.{name_}"] = size(t)
             if bare_count[name_] == 1 and name_ not in quoted_names:
@@ -848,7 +899,7 @@ def expand_program(program: A.Program, env: Optional[Environment] = None,
 
             body = strip(expr)
             body = expand_macros(body, macros)
-            body = lower(body, ctors, types)
+            body = desugar(body, ctors, types)
 
             def qresolve(nm: str) -> Optional[Term]:
                 if nm in subs:
@@ -880,7 +931,7 @@ def expand_program(program: A.Program, env: Optional[Environment] = None,
                 continue
             packaged.append((d, datum))
 
-        # 6b: a level-0 arm may name one of those datums, so expand again
+        # 6b: a level-0 equation may name one of those datums, so expand again
         expand_all()
 
         # 6c: package the level-1 executables
@@ -893,7 +944,7 @@ def expand_program(program: A.Program, env: Optional[Environment] = None,
                     f"has no fuel loop)")
             params: List[Term] = []
             for arg in iargs:
-                body = lower(expand_macros(arg, macros), ctors, types)
+                body = desugar(expand_macros(arg, macros), ctors, types)
                 params.append(cg.gen(body, [], d.name))
             prog = Level1Program(
                 name=d.name, interp=iname, interp_term=out.terms[iname],

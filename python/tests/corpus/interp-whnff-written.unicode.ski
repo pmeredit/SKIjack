@@ -3,8 +3,8 @@
 ⍝ as ordinary user source.  It compiles with `generate_forms=False` to the
 ⍝ same 618-atom `whnfF`, which is the claim that generate.py emits
 ⍝ surface syntax and adds no semantics of its own.
-term ≡ S ∣ K ∣ I ∣ App term term
-maybe ≡ Nothing ∣ Just term
+term ≡ S | K | I | App term term
+maybe ≡ Nothing | Just term
 whnfF ≔ {
   step m = sp m nil stepS stepK stepI
   loop1 f m n2 = step m (Just m) (f n2)

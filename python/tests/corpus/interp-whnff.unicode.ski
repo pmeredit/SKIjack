@@ -1,10 +1,10 @@
 ⍝ The paper's base interpreter, written in the surface.
 ⍝ The object type is identified by shape: App is the one constructor
 ⍝ with two fields of its own type, so S, K and I are its leaves.  The
-⍝ walker sp, the rebuilder rb, the default step arms stepS/stepK/stepI
+⍝ walker sp, the rebuilder rb, the default step equations stepS/stepK/stepI
 ⍝ and the fuel loop are all generated (SURFACE-LANGUAGE-DESIGN.md 6c).
-term ≡ S ∣ K ∣ I ∣ App term term
-maybe ≡ Nothing ∣ Just term
+term ≡ S | K | I | App term term
+maybe ≡ Nothing | Just term
 
 whnfF ≔ {
   step m = sp m nil stepS stepK stepI

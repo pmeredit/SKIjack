@@ -51,7 +51,7 @@ def run_and_read(exp, name, max_steps=CAP, fuel=None):
 # ------------------------------------------- EXAMPLES.md section 4
 
 def test_the_answer_line_of_examples_section_4(built):
-    """`answer := wf5Abs |- <K I Err>@5` reduces to `RVal <I>`: the K arm
+    """`answer := wf5Abs |- <K I Err>@5` reduces to `RVal <I>`: the K equation
     fires on the encoded K and discards the encoded Err, which never
     reaches head position."""
     ctor, payload, steps = run_and_read(built[("t3", "ascii")], "answer")

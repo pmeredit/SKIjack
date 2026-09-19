@@ -79,7 +79,9 @@ def test_problems_are_reported_together():
     src = TERM + MAYBE + INTERP + "a = nope1\nb = nope2\nc = nope3\n"
     exc = rejects(src, ScopeError, "3 Stage A problems")
     assert len(exc.problems) == 3
-    assert [p.where for p in exc.problems] == ["arm a", "arm b", "arm c"]
+    assert [str(p.where) for p in exc.problems] == [
+        "equation a", "equation b", "equation c"]
+    assert [p.where.dotted for p in exc.problems] == ["a", "b", "c"]
     assert "nope3" in str(exc)
 
 
@@ -136,7 +138,7 @@ def test_an_undeclared_constructor_in_a_branch_is_rejected_by_the_parser():
 
 def test_EQ_refuses_an_arm():
     rejects(TERM + MAYBE + INTERP + BOOL + "g x = x\nf = EQ g g\n",
-            DataError, "argument 1 of 'EQ' is the arm 'g'")
+            DataError, "argument 1 of 'EQ' is the equation 'g'")
 
 
 def test_EQ_refuses_a_bare_combinator():
@@ -169,7 +171,7 @@ def test_a_scry_outside_a_quotation_is_rejected():
 
 def test_the_application_constructor_has_no_step_arm():
     src = TERM + MAYBE + "c := {\n  stepApp args = args Nothing Nothing\n}\n"
-    rejects(src, InterfaceError, "has no step arm")
+    rejects(src, InterfaceError, "has no step equation")
 
 
 def test_a_written_step_must_install_the_leaves_in_declaration_order():
@@ -264,4 +266,4 @@ def test_a_constructor_may_not_shadow_a_declaration():
 def test_a_core_may_not_define_an_arm_twice():
     src = TERM + MAYBE + ("c := {\n  step m = sp m nil stepS stepK stepI\n"
                           "  step m = sp m nil stepS stepK stepI\n}\n")
-    rejects(src, ScopeError, "arm 'step' is defined twice")
+    rejects(src, ScopeError, "equation 'step' is defined twice")

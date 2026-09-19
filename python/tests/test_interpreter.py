@@ -194,7 +194,7 @@ def test_T3_table(built, oracle, label, obj, want_abs, want_omg):
                                        ("I K", ap(I, K))])
 def test_the_two_interpreters_are_indistinguishable_where_Err_never_fires(
         built, oracle, label, obj):
-    """Faithfulness: the one differing arm is unreachable for these two,
+    """Faithfulness: the one differing equation is unreachable for these two,
     so both the answer and the contraction count agree."""
     e = built[("interp-t3", "ascii")]
     assert _t3_run(e, oracle, "wf5Abs", obj) == _t3_run(e, oracle, "wf5Omg", obj)

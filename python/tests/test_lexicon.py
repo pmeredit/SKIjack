@@ -43,13 +43,13 @@ def test_comments_run_to_end_of_line():
 
 
 PAIRS = [
-    ("nat === Zero | Suc nat", "nat ≡ Zero ∣ Suc nat"),
+    ("nat === Zero | Suc nat", "nat ≡ Zero | Suc nat"),
     ("n |> { Zero Zero ; Suc m m }", "n ▹ { Zero Zero ; Suc m m }"),
     ("swap p :=* [3@p 2@p]", "swap p ≔* [3⊑p 2⊑p]"),
     ("a := ns{/k/two => <I>, /k/three => <K>}",
-     "a ≔ ⦃/k/two ↦ ⟨I⟩, /k/three ↦ ⟨K⟩⦄"),
-    ("b := wfN r |- <?^/k/three>@10", "b ≔ wfN r ⊢ ⟨∵/k/three⟩₁₀"),
-    ("c := <I ?^/k/x>@[]", "c ≔ ⟨I ∵/k/x⟩₍₎"),
+     "a ≔ ns{/k/two ↦ <I>, /k/three ↦ <K>}"),
+    ("b := wfN r |- <?^/k/three>@10", "b ≔ wfN r ⊢ <∵/k/three>₁₀"),
+    ("c := <I ?^/k/x>@[]", "c ≔ <I ∵/k/x>₍₎"),
     ("f : s -> t", "f : s → t"),
     ("g x = \\z.x z", "g x = λz.x z"),
     ("h = B C W Y EQ", "h = ∘ ⇄ ⋈ Υ ≟"),
@@ -97,11 +97,16 @@ def test_the_two_arrows_have_their_own_rows():
     assert (sig[0].ascii, sig[0].unicode) == ("->", "→")
 
 
-def test_the_only_non_row_spelling_is_the_namespace_closer():
-    assert UNICODE_ALIASES == {"⦄": "RBRACE"}
-    assert kinds(lex_unicode("⦃/a/b ↦ K⦄")) == [
+def test_there_are_no_non_row_spellings():
+    """Every spelling in either lexicon is a row of the table.  The
+    namespace literal opens with its own token and closes with the
+    ordinary block closer in both lexicons, so nothing needs an alias and
+    the bijection has no exceptions."""
+    assert UNICODE_ALIASES == {}
+    assert kinds(lex_unicode("ns{/a/b ↦ K}")) == [
         "NSOPEN", "SLASH", "IDENT", "SLASH", "IDENT", "MAPSTO", "IDENT",
         "RBRACE", "NEWLINE", "EOF"]
+    assert kinds(lex_ascii("ns{/a/b => K}")) == kinds(lex_unicode("ns{/a/b ↦ K}"))
 
 
 def test_unknown_character_is_an_error():

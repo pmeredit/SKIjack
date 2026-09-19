@@ -45,9 +45,9 @@ def test_decision_a_branch_binders_come_from_the_declared_arity():
     tree = parse_ascii(
         "nat === Zero | Suc nat\n"
         "f n = n |> { Zero Zero ; Suc k Suc (f k) }\n")
-    arm = tree.decls[1]
-    assert isinstance(arm, A.Arm)
-    case = arm.body
+    equation = tree.decls[1]
+    assert isinstance(equation, A.Equation)
+    case = equation.body
     assert isinstance(case, A.Case)
     assert [(c, bs) for c, bs, _ in case.branches] == [("Zero", ()),
                                                        ("Suc", ("k",))]
@@ -67,7 +67,7 @@ def test_collect_ctors_records_order_and_arity():
 
 def test_decision_b_core_versus_namespace_literal():
     core = parse_ascii("c := {\n  f x = x\n}\n").decls[0]
-    assert isinstance(core, A.Core) and core.arms[0].name == "f"
+    assert isinstance(core, A.Core) and core.equations[0].name == "f"
     ns = parse_ascii("c := ns{/a/b => K}\n").decls[0]
     assert isinstance(ns, A.Def) and isinstance(ns.expr, A.NsLit)
 
@@ -85,7 +85,7 @@ def test_the_two_arrows_are_different_token_kinds():
 
 def test_top_level_arm_keeps_its_binders():
     d = parse_ascii("C f x y = f y x\n").decls[0]
-    assert d == A.Arm("C", ("f", "x", "y"),
+    assert d == A.Equation("C", ("f", "x", "y"),
                       A.App(A.App(A.Name("f"), A.Name("y")), A.Name("x")))
 
 

@@ -1,7 +1,7 @@
 """Running a compiled program, at level 0 and at level 1.
 
 ``SURFACE-LANGUAGE-DESIGN.md`` §6: level 0 hands the term to the host
-reducer as is; level 1 hands it ``interp fuel ⟨program⟩`` and reads the
+reducer as is; level 1 hands it ``interp fuel <program>`` and reads the
 interpreter's outcome type.
 
 Everything that reads a value here reads it **behaviorally** -- by
@@ -37,7 +37,9 @@ __all__ = ["RunError", "Outcome", "PolicyResult", "NamespaceRun",
            "timeout_constructor", "DEFAULT_CAP"]
 
 
-class RunError(Exception):
+from .errors import SkijackError
+
+class RunError(SkijackError):
     pass
 
 
@@ -83,7 +85,7 @@ def run_level0(term: Term, max_steps: int = 100_000, *,
 def run_level1(packaged, max_steps: int = 1_000_000, *,
                fuel: Optional[int] = None,
                env: Optional[Environment] = None) -> Outcome:
-    """Reduce ``interp fuel ⟨program⟩`` (§6, "Level 1, virtualized").
+    """Reduce ``interp fuel <program>`` (§6, "Level 1, virtualized").
 
     ``packaged`` is a :class:`~skijack.expand.Level1Program` or a term
     already closed over its fuel.  ``fuel`` overrides the declaration's.
@@ -210,9 +212,9 @@ def decode(datum: Term, obj: ObjectType, *, max_steps: int = 1_000_000,
 def timeout_constructor(decl: A.TypeDecl) -> str:
     """The constructor a loop returns when the fuel runs out: ``R``'s
     **last terminal**, not its last constructor (``SURFACE-LANGUAGE-DESIGN.md``
-    §6c's loop rule).  For ``maybe ≡ Nothing ∣ Just term`` that is
+    §6c's loop rule).  For ``maybe ≡ Nothing | Just term`` that is
     ``Nothing``, which is *not* last in declaration order; for
-    ``result ≡ RVal term ∣ RErr ∣ RTime`` it is ``RTime``.
+    ``result ≡ RVal term | RErr | RTime`` it is ``RTime``.
     """
     terminals = [c for c in decl.ctors if not c.fields]
     if not terminals:
@@ -246,7 +248,8 @@ def run_policy(prog: Level1Program, *, start: int = 8, cap: int = DEFAULT_CAP,
     than hiding it.
 
     "A value" means any result constructor other than the loop's timeout,
-    which is the *last* constructor of the result type (§6c's loop rule).
+    which is the last *terminal* of the result type and not its last
+    constructor (§6c's loop rule; see :func:`timeout_constructor`).
     """
     env = env or _fresh_env()
     timeout_ctor = timeout_constructor(prog.result_type)

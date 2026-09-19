@@ -9,7 +9,7 @@ Whitespace is not reproduced, only an equal tree.
 Every operator spelling is read out of the token table, which is a strict
 bijection, so the renderer never has to decide between two spellings of
 one token kind.  The two places the *construct* rather than the token
-picks the text are the namespace literal's closer (``⦄`` against ``}``)
+picks the text are the namespace literal's closer (``}`` against ``}``)
 and a Tier 1 name's glyph (``⇄`` for ``C``), both stated in
 ``SYNTAX.md`` §2 and its lexing notes.
 """
@@ -54,9 +54,9 @@ class _Renderer:
         return self.t["ARROW"]
 
     def ns_close(self) -> str:
-        """``SYNTAX.md`` §2: ``⦄`` is the same token kind as ``}``, so the
+        """``SYNTAX.md`` §2: ``}`` is the same token kind as ``}``, so the
         closer is chosen by the construct, not by the token."""
-        return "}" if self.lx == "ascii" else "⦄"
+        return "}" if self.lx == "ascii" else "}"
 
     def name(self, n: str) -> str:
         if self.lx == "unicode" and n in GLYPH_NAMES:
@@ -131,13 +131,13 @@ class _Renderer:
         if isinstance(d, A.Sig):
             return (f"{self.name(d.name)} {self.t['COLON']} "
                     + f" {self.arrow()} ".join(d.types))
-        if isinstance(d, A.Arm):
+        if isinstance(d, A.Equation):
             head = " ".join([self.name(d.name)] + list(d.binders))
             return f"{head} {self.t['EQUALS']} {self.expr(d.body, 0)}"
         if isinstance(d, A.Core):
-            arms = "\n".join("  " + self.decl(x) for x in d.arms)
+            equations = "\n".join("  " + self.decl(x) for x in d.equations)
             head = " ".join([self.name(d.name)] + list(d.params))
-            return f"{head} {self.t['ASSIGN']} {{\n{arms}\n}}"
+            return f"{head} {self.t['ASSIGN']} {{\n{equations}\n}}"
         if isinstance(d, A.Macro):
             op = self.t["CMACRO"] if d.capturing else self.t["MACRO"]
             head = " ".join([self.name(d.name)] + list(d.params))
@@ -156,7 +156,7 @@ def render(node, lexicon: str) -> str:
     r = _Renderer(lexicon)
     if isinstance(node, A.Program):
         return r.program(node)
-    if isinstance(node, (A.TypeDecl, A.Sig, A.Arm, A.Core, A.Macro, A.Def)):
+    if isinstance(node, (A.TypeDecl, A.Sig, A.Equation, A.Core, A.Macro, A.Def)):
         return r.decl(node)
     return r.expr(node, 0)
 

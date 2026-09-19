@@ -1,5 +1,5 @@
 -- The paper's T3 pair: two interpreters over a five-constructor object
--- type differing in one arm.  `step` and the fuel loop are generated for
+-- type differing in one equation.  `step` and the fuel loop are generated for
 -- both cores; the outcome type is the first outcome-shaped declaration
 -- and the result type the last.
 term5 === S | K | I | App term5 term5 | Err

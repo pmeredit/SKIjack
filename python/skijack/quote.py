@@ -17,7 +17,7 @@ Inside ``< >``:
 * any other level-0 name (``UQ``, ``whnfF``, ``flipA``, ``Suc``) is
   **inlined as its expanded level-0 term and then quoted**, exactly as
   the artifact writes ``encP(A(UP, encP(IK)))``.  This is the decision
-  this step takes; §6b's shared quoted subject ``⟨subject⟩``, with
+  this step takes; §6b's shared quoted subject ``<subject>``, with
   library names resolving to axes into it, is deferred.
 
 Nested quotation is allowed: the inner ``<I K>`` of ``<UQ <I K>>``
@@ -41,7 +41,9 @@ from .generate import ObjectType
 __all__ = ["QuoteError", "Encoder", "quote", "OBJECT_LEAF_PREFIX"]
 
 
-class QuoteError(Exception):
+from .errors import SkijackError
+
+class QuoteError(SkijackError):
     pass
 
 

@@ -18,7 +18,7 @@ At import time the table is checked (see :func:`check_table`) as a
   ``=``, and ``|>`` and ``|-`` before ``|``).
 
 The one spelling outside the table is the Unicode namespace-literal
-closer ``⦄``, which ``SYNTAX.md`` §2 states is the *same token kind* as
+closer ``}``, which ``SYNTAX.md`` §2 states is the *same token kind* as
 ``}`` rather than a row of its own; it is declared in
 :data:`UNICODE_ALIASES` and checked to collide with nothing.
 """
@@ -36,7 +36,9 @@ __all__ = [
 ]
 
 
-class LexError(Exception):
+from .errors import SkijackError
+
+class LexError(SkijackError):
     pass
 
 
@@ -57,11 +59,13 @@ class Row:
     note: str = ""
 
 
-#: Extra spellings that are *not* rows: ``SYNTAX.md`` §2's namespace
-#: literal row states that its closer ``⦄`` and ``}`` are one token kind,
-#: so ``⦄`` is an alias for ``RBRACE`` rather than a row that would break
-#: the ASCII column's injectivity.  Nothing else lives here.
-UNICODE_ALIASES = {"⦄": "RBRACE"}
+#: Extra spellings that are *not* rows.  There are none.  The Unicode
+#: lexicon exists to give one glyph to each of ASCII's multi-character
+#: operators (``|-``, ``:=``, ``===``, ``=>``, ``->``, ``?^``, ``|>``,
+#: ``@10``); where ASCII already uses a single unambiguous character the
+#: two lexicons agree, so quotation is ``<t>`` and a namespace literal is
+#: ``ns{...}`` in both, and nothing needs an alias.
+UNICODE_ALIASES: dict = {}
 
 
 TOKEN_TABLE: Tuple[Row, ...] = (
@@ -69,7 +73,7 @@ TOKEN_TABLE: Tuple[Row, ...] = (
     Row("macro definition",      "MACRO",     ":=*", "≔*"),
     Row("capturing macro",       "CMACRO",    ":=!", "≔!"),
     Row("type declaration",      "TYPEDECL",  "===", "≡"),
-    Row("namespace literal open","NSOPEN",    "ns{", "⦃"),
+    Row("namespace literal open","NSOPEN",    "ns{", "ns{"),
     Row("scry",                  "SCRY",      "?^",  "∵"),
     Row("case",                  "CASE",      "|>",  "▹"),
     Row("interpreter selection", "TURNSTILE", "|-",  "⊢"),
@@ -79,13 +83,15 @@ TOKEN_TABLE: Tuple[Row, ...] = (
              "arrow alone, so the table is a bijection"),
     Row("signature arrow",       "ARROW",     "->",  "→"),
     Row("signature colon",       "COLON",     ":",   ":"),
-    Row("arm equation",          "EQUALS",    "=",   "=",
+    Row("equation",              "EQUALS",    "=",   "=",
         note="name binders = body, inside a core or at top level"),
-    Row("type alternative",      "ALT",       "|",   "∣"),
-    Row("quotation open",        "QOPEN",     "<",   "⟨"),
-    Row("quotation close",       "QCLOSE",    ">",   "⟩"),
+    Row("type alternative",      "ALT",       "|",   "|"),
+    Row("quotation open",        "QOPEN",     "<",   "<"),
+    Row("quotation close",       "QCLOSE",    ">",   ">"),
     Row("lambda",                "LAMBDA",    "\\",  "λ"),
-    Row("wing separator",        "DOT",       ".",   "."),
+    Row("name qualifier",        "DOT",       ".",   ".",
+        note="a.b is a qualified name looked up in the name table, not a "
+             "path into a runtime environment (SYNTAX.md 7)"),
     Row("branch separator",      "SEMI",      ";",   ";"),
     Row("fact separator",        "COMMA",     ",",   ","),
     Row("path separator",        "SLASH",     "/",   "/"),
@@ -95,8 +101,7 @@ TOKEN_TABLE: Tuple[Row, ...] = (
     Row("cell close",            "RBRACK",    "]",   "]"),
     Row("block open",            "LBRACE",    "{",   "{"),
     Row("block close",           "RBRACE",    "}",   "}",
-        note="also closes a namespace literal; the Unicode ⦄ is the same "
-             "token kind (see UNICODE_ALIASES)"),
+        note="also closes a namespace literal, in both lexicons"),
     # --- Tier 1 glyphs (identifiers, not operators) -----------------------
     Row("composition (B)",       "IDENT",     "B",   "∘",   structural=False),
     Row("swap (C)",              "IDENT",     "C",   "⇄",   structural=False),
@@ -215,7 +220,7 @@ _ASCII_IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_']*")
 #: Unicode identifiers may carry subscript digits (``flipK₁``); they are
 #: normalized to ASCII digits so the two lexicons agree on the tree.  A
 #: subscript can never *start* an identifier, which is what keeps the
-#: subscript-fuel notation ``⟨t⟩₁₀`` unambiguous.
+#: subscript-fuel notation ``«t»₁₀`` unambiguous.
 _UNI_IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_'₀-₉]*")
 _NUMBER = re.compile(r"[0-9]+")
 _ASCII_AXIS = re.compile(r"([0-9]+)@")

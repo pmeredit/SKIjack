@@ -1,16 +1,16 @@
 ⍝ EXAMPLES.md section 3, level 1: the same program quoted and run under
 ⍝ the base interpreter.  `flipA` and `pair` are level-0 names, so inside
-⍝ ⟨ ⟩ they are inlined as their expanded terms and then quoted; S, K and
-⍝ I inside ⟨ ⟩ are the object type's leaves.
-term ≡ S ∣ K ∣ I ∣ App term term
-maybe ≡ Nothing ∣ Just term
+⍝ < > they are inlined as their expanded terms and then quoted; S, K and
+⍝ I inside < > are the object type's leaves.
+term ≡ S | K | I | App term term
+maybe ≡ Nothing | Just term
 
 whnfF ≔ { step m = sp m nil stepS stepK stepI }
 
 swap p ≔* [3⊑p 2⊑p]
 flipA q = swap q
 
-prog   ≔ ⟨flipA [K I] K⟩
-answer ≔ whnfF ⊢ ⟨flipA [K I] K⟩₄₁
-short  ≔ whnfF ⊢ ⟨flipA [K I] K⟩₄₀
-policy ≔ whnfF ⊢ ⟨flipA [K I] K⟩₍₎
+prog   ≔ <flipA [K I] K>
+answer ≔ whnfF ⊢ <flipA [K I] K>₄₁
+short  ≔ whnfF ⊢ <flipA [K I] K>₄₀
+policy ≔ whnfF ⊢ <flipA [K I] K>₍₎

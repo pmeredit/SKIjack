@@ -10,5 +10,5 @@ same a b = ≟ a b
 deep c = 6⊑c
 lam h = λz.h z
 wing r = r.a.b
-peek s = ∵/vane/care[⟨K⟩]/desk s
-facts ≔ ⦃/a/b ↦ ⟨I⟩, /a/c ↦ ⟨K⟩⦄
+peek s = ∵/vane/care[<K>]/desk s
+facts ≔ ns{/a/b ↦ <I>, /a/c ↦ <K>}

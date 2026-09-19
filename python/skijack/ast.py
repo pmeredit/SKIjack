@@ -16,7 +16,7 @@ from typing import Optional, Tuple, Union
 __all__ = [
     "Expr", "Name", "App", "Cell", "Quote", "Scry", "Pick", "Lambda",
     "Case", "NsLit", "Path", "Seg",
-    "Decl", "TypeDecl", "Ctor", "Sig", "Arm", "Core", "Macro", "Def",
+    "Decl", "TypeDecl", "Ctor", "Sig", "Equation", "Core", "Macro", "Def",
     "Program", "POLICY",
 ]
 
@@ -25,8 +25,10 @@ __all__ = [
 
 @dataclass(frozen=True)
 class Name:
-    """A name.  A wing ``a.b`` is carried as the dotted text ``"a.b"``;
-    wing resolution to axes is Stage B and does not happen here."""
+    """A name.  A qualified name ``a.b`` is carried as the dotted text
+    ``"a.b"``; it is looked up in the name table like any other name, and
+    resolving it to an axis chain is not planned -- there is no runtime
+    environment for an axis to index (``DESIDERATA.md`` item 2)."""
     name: str
 
 
@@ -52,7 +54,7 @@ POLICY = "policy"
 
 @dataclass(frozen=True)
 class Quote:
-    """``<t>`` / ``⟨t⟩``: compile-time quotation.
+    """``<t>`` / ``<t>``: compile-time quotation.
 
     ``fuel`` is ``None`` for a bare datum, an ``int`` for ``<t>@n``, or
     :data:`POLICY` for ``<t>@[]``.  ``interp`` is the expression left of
@@ -106,7 +108,7 @@ class Case:
 
 @dataclass(frozen=True)
 class NsLit:
-    """``ns{/a/b -> v, ...}`` / ``⦃/a/b ↦ v, …⦄``."""
+    """``ns{/a/b -> v, ...}`` / ``ns{/a/b ↦ v, …}``."""
     facts: Tuple[Tuple[Path, "Expr"], ...]
 
 
@@ -138,8 +140,8 @@ class Sig:
 
 
 @dataclass(frozen=True)
-class Arm:
-    """``name b1 b2 = body``.  An arm of a core, or (see the README) a
+class Equation:
+    """``name b1 b2 = body``.  An equation of a core, or (see the README) a
     top-level declaration."""
     name: str
     binders: Tuple[str, ...]
@@ -148,14 +150,14 @@ class Arm:
 
 @dataclass(frozen=True)
 class Core:
-    """``name := { arms }``, or ``name p1 p2 := { arms }``.
+    """``name := { equations }``, or ``name p1 p2 := { equations }``.
 
-    A core's parameters are prepended to every arm's binder list and are
-    in scope in every arm body; the core's name denotes its loop applied
+    A core's parameters are prepended to every equation's binder list and are
+    in scope in every equation body; the core's name denotes its loop applied
     to nothing, so ``wfQ E |- <t>@n`` supplies them
     (``SURFACE-LANGUAGE-DESIGN.md`` §6, the interpreter's own arity)."""
     name: str
-    arms: Tuple[Arm, ...]
+    equations: Tuple[Equation, ...]
     params: Tuple[str, ...] = ()
 
 
@@ -175,7 +177,7 @@ class Def:
     expr: Expr
 
 
-Decl = Union[TypeDecl, Sig, Arm, Core, Macro, Def]
+Decl = Union[TypeDecl, Sig, Equation, Core, Macro, Def]
 
 
 @dataclass(frozen=True)

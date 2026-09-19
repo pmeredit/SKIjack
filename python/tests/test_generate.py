@@ -114,7 +114,7 @@ def test_is_interpreter_core():
 
 def test_generation_adds_the_walker_rebuilder_and_default_arms():
     g = generate(parse_ascii(source("interp-whnff", "ascii")))
-    names = {d.name for d in g.decls if isinstance(d, A.Arm)}
+    names = {d.name for d in g.decls if isinstance(d, A.Equation)}
     assert {"sp", "rb", "spApp", "rb1", "resS", "resK", "resI"} <= names
     assert {"stepS", "stepS1", "stepS2", "stepS3",
             "stepK", "stepK1", "stepK2", "stepI", "stepI1"} <= names
@@ -124,15 +124,15 @@ def test_generation_fills_each_core_with_step_and_loop():
     g = generate(parse_ascii(source("interp-t3", "ascii")))
     cores = {d.name: d for d in g.decls if isinstance(d, A.Core)}
     for name in ("wf5Abs", "wf5Omg"):
-        arms = {x.name for x in cores[name].arms}
-        assert {"stepErr", "step", "loop", "loop1"} <= arms
+        equations = {x.name for x in cores[name].equations}
+        assert {"stepErr", "step", "loop", "loop1"} <= equations
 
 
 def test_a_written_step_or_loop_is_not_replaced():
     g = generate(parse_ascii(source("interp-whnff-written-loop", "ascii")))
     core = [d for d in g.decls if isinstance(d, A.Core)][0]
-    loops = [x for x in core.arms if x.name == "loop"]
-    steps = [x for x in core.arms if x.name == "step"]
+    loops = [x for x in core.equations if x.name == "loop"]
+    steps = [x for x in core.equations if x.name == "step"]
     assert len(loops) == len(steps) == 1
     # the written loop, verbatim: loop n m = n Nothing (loop1 loop m)
     assert loops[0].binders == ("n", "m")
@@ -143,7 +143,7 @@ def test_a_user_definition_overrides_a_generated_one():
         "whnfF := {\n  step m = sp m nil stepS stepK stepI\n}\n"
     g = generate(parse_ascii(src))
     assert len([d for d in g.decls
-                if isinstance(d, A.Arm) and d.name == "rb1"]) == 1
+                if isinstance(d, A.Equation) and d.name == "rb1"]) == 1
 
 
 def test_loop1_without_loop_is_refused():
@@ -171,7 +171,7 @@ def test_two_cores_get_their_own_step_and_differ_only_there():
     e = expand_program(parse_ascii(source("interp-t3", "ascii")))
     assert pretty(e.term("wf5Abs.step")) != pretty(e.term("wf5Omg.step"))
     assert pretty(e.term("wf5Abs.stepErr")) != pretty(e.term("wf5Omg.stepErr"))
-    # everything they share is one node: same walker, same ISA arms
+    # everything they share is one node: same walker, same ISA equations
     for shared in ("sp", "rb", "stepS", "stepK", "stepI"):
         assert shared in e.terms
 

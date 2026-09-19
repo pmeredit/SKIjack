@@ -57,7 +57,7 @@ importable from the working directory.
   trees*; application is left-associative; the two documented parsing
   decisions behave as specified, including a clear error on an
   undeclared constructor in a case branch.
-* `tests/test_roundtrip.py` — for each of the 14 corpus sources `S` in
+* `tests/test_roundtrip.py` — for each of the 17 corpus programs `S` in
   lexicon `L`: `parse_L(render_L(parse_L(S))) == parse_L(S)`;
   `parse_M(render_M(parse_L(S))) == parse_L(S)` for the other lexicon
   `M`; `render_L` is idempotent on text; and a there-and-back trip
@@ -168,7 +168,7 @@ its own, made checkable.
 
 **T3.** `interp-t3.*.ski` declares the five-constructor alphabet, the
 three-way outcome and the three-way result, and two cores differing in
-one arm:
+one equation:
 
 ```
 wf5Abs := { stepErr acc = Errd }
@@ -189,14 +189,14 @@ and a host cap of 400,000 contractions the table is the paper's:
 | `Omega` | TIME (10,130) | TIME (10,130) |
 
 The two agree exactly — answer *and* contraction count — wherever the
-`Err` arm never fires, which is the faithfulness claim; they differ only
-where it does, and there the absorbing arm reports a crash the other
+`Err` equation never fires, which is the faithfulness claim; they differ
+only where it does, and there the absorbing one reports a crash the other
 hides as host divergence.
 
 ### Quotation and the level-1 run
 
 `<t>` is compile-time quotation and emits a datum; `I |- <t>@n` packages
-`interp fuel ⟨program⟩`, the level-1 executable of
+`interp fuel <program>`, the level-1 executable of
 `SURFACE-LANGUAGE-DESIGN.md` §6.  `tests/corpus/level1-flipa.*.ski` and
 `tests/corpus/tower.*.ski` carry the sources; every number below is
 measured on this expander and matches the artifact's.
@@ -339,9 +339,9 @@ list. The Stage A items and their classes:
 Every compilable corpus file is clean. The four parse-only files —
 `misc-forms`, `sec4-interp`, `sec5-lookup`, `syntax3-resolver` — are
 rejected with named problems, which is the point: they carry forms the
-notes describe and this package does not compile (wings, segment
-payloads, an undeclared interpreter), and the checker says so instead of
-the expander failing later.
+notes describe and this package does not compile (qualified names,
+segment payloads, an undeclared interpreter), and the checker says so
+instead of the expander failing later.
 
 **The dictionary** (`skijack/dictionary.py`) is Tier 1's table as a
 versioned artifact (`DESIDERATA.md` §5): for each name, its expansion,
@@ -368,14 +368,15 @@ S (S (S (S sp (K K)) (K stepS)) (K stepK)) (K stepI)
 ```
 
 and `whnfF` lifts to `Y (S (K (S (S (K S) (S (K K) hd)))) (S (K K) loop1))`
-— the paper's appendix observation that a `Y`-tied arm begins with the
+— the paper's appendix observation that a `Y`-tied supercombinator begins with the
 fourteen atoms of `Y`, made mechanical. Excluding the wrappers so that
 the largest match is not `loop1` recovers `Y`, `sp`, `stepS`, `stepK`,
-`stepI` inside it, and excluding a step arm in turn surfaces `rb`.
+`stepI` inside it, and excluding a step equation in turn surfaces `rb`.
 
-Three small rules the table needs, each tested: single-atom entries
-(`zero`, `nil`, `Zero`, `PTrue` all expand to `K`) are tabled but never
-*lifted*, because naming every `K` is not a recognition; `S`, `K` and `I`
+Three small rules the table needs, each tested: entries under
+`MIN_LIFT_SIZE` (three atoms) are tabled but never *lifted*, because
+naming every `K` is not a recognition --- and the floor is three and not
+one, so `Two` at two atoms is not lifted either; `S`, `K` and `I`
 are reserved for the ISA, so a program whose object type declares
 constructors of those names keeps real rows for them but lift and lower
 leave the names to the combinators; and when two names share a term
@@ -404,7 +405,7 @@ $ python3 -m skijack tests/corpus/interp-whnff.ascii.ski --lift step
 S (S (S (S sp (K K)) (K stepS)) (K stepK)) (K stepI)
 
 $ python3 -m skijack tests/corpus/sec4-interp.ascii.ski --check
-...: ScopeError in core myInterp, arm stepErr: unresolved name 'errd'; ...
+...: ScopeError in core myInterp, equation stepErr: unresolved name 'errd'; ...
 ```
 
 From Python:
@@ -432,19 +433,21 @@ Out of scope for these five steps, and refused with a clear error by
   the only place it is live (§6, "Level 0, direct").
 * **segment payloads** — `/vane/care[<t>]/desk` parses but does not
   compile.
-* **`check.py` and `dictionary.py`** — the Stage-A/B checker and the
-  published Tier 1 table.
-* **the quoted standard subject `⟨subject⟩`** of §6b — see decision 24.
+* **the quoted standard subject `<subject>`** of §6b — see decision 24.
 * **quotation anywhere but the right-hand side of a definition** —
-  `name := <t>` and `name := I |- <t>@n` compile; a `<t>` inside an arm
+  `name := <t>` and `name := I |- <t>@n` compile; a `<t>` inside an equation
   body still raises.
-* **wing resolution** — `a.b` is carried as the dotted name; there is no
-  subject and no axis schema yet, so a wing does not compile.
+* **qualified names** — `a.b` is carried as the dotted name and then
+  rejected as unresolved. When it does resolve it will resolve in the
+  name table, to a core's equation (`dictionary.from_expansion` already
+  registers `whnfF.step` and its siblings under exactly those names);
+  resolving it to an axis chain is not planned, because there is no
+  runtime environment for an axis to index (`DESIDERATA.md` item 2).
 * **capturing macros** — `:=!` is refused by name
   (`macro 'm' is declared capturing (':=!'); the capturing form is not
   implemented`).
-* **mutual recursion between arms** — see the fixpoint decision below.
-* **lift**, the dictionary/hash artifact, and the standard subject.
+* **mutual recursion between equations** — see the fixpoint decision below.
+* **the standard subject.**
 
 ## Decisions the specification left open
 
@@ -461,18 +464,19 @@ the interpretation chosen is the one that makes `EXAMPLES.md` work.
    constructor in a branch is a `ParseError` naming it.
 2. **(b) `name := { … }` is a core; `name := ns{ … }` is a namespace
    literal.** The `ns` prefix is munched by the ASCII lexer as one
-   `NSOPEN` token; Unicode spells it `⦃`, and its closer `⦄` lexes to
+   `NSOPEN` token; Unicode spells it `ns{`, and its closer `}` lexes to
    the same `RBRACE` kind as `}` (`SYNTAX.md` §2 says so explicitly), so
-   one grammar serves both. `⦄` is therefore declared in
-   `lexicon.UNICODE_ALIASES`, not as a table row, which is what keeps
-   the table's ASCII column injective.
-3. **Core fixpoint strategy: one fixpoint per arm, not one over a
-   tuple.** A self-recursive arm `f b1 … bn = body` compiles to
+   one grammar serves both. Since the Unicode brackets were dropped for
+   ones that render everywhere, a namespace literal closes with the
+   ordinary `}` in both lexicons, `UNICODE_ALIASES` is empty, and the
+   table is a bijection with no exceptions at all.
+3. **Core fixpoint strategy: one fixpoint per equation, not one over a
+   tuple.** A self-recursive equation `f b1 … bn = body` compiles to
    `AL(f, Y fGen)` with `D(fGen, [self, b1, …, bn], body[f := self])`,
    which is the `spGen`/`sp` and `wfGen`/`whnfF` shape of
-   `tower_harness.py`. A non-recursive arm is a plain `D`. This is what
+   `tower_harness.py`. A non-recursive equation is a plain `D`. This is what
    reproduces `EXAMPLES.md`'s 42 and 43 atoms for `add` and `sub`
-   exactly. The cost is that **mutual recursion between two arms is
+   exactly. The cost is that **mutual recursion between two equations is
    refused** with a named error rather than mis-compiled; a tuple
    fixpoint would handle it and is the natural next step.
 4. **Every lambda is lambda-lifted into its own supercombinator.** A
@@ -480,21 +484,21 @@ the interpretation chosen is the one that makes `EXAMPLES.md` work.
    enclosing binders that occur free in the body, applied to those
    binders at the use site. For `add` this yields exactly the reference
    `add1 f m k = Suc (f m k)` and `addGen f m n = n m (add1 f m)`. This
-   is Tier 2 of `DESIDERATA.md` §3 taken literally: arms are the unit.
+   is Tier 2 of `DESIDERATA.md` §3 taken literally: supercombinators are the unit.
 5. **Cell items are atoms.** `'[' expr expr+ ']'` in the grammar sketch
    is ambiguous under juxtaposition (`[3@p 2@p]` would be one
    application), so a cell's items are parsed as atoms and an
    application inside a cell is parenthesized: `[(f x) y]`. Every cell
    in the corpus is unaffected.
-6. **Newlines terminate declarations and arms.** The grammar sketch is
+6. **Newlines terminate declarations and equations.** The grammar sketch is
    silent, but a core body `{ inc n = Suc n  dec n = … }` is otherwise
-   ambiguous. Newlines are significant at declaration and arm level and
-   invisible inside `(`, `[`, `<`/`⟨`, a case brace, and a namespace
+   ambiguous. Newlines are significant at declaration and equation level and
+   invisible inside `(`, `[`, `<`/`<`, a case brace, and a namespace
    literal; core braces do *not* hide them.
 7. **The lambda rule consumes exactly one `.`.** `SYNTAX.md` §9 flags
-   the collision between the wing dot and the lambda dot. `DOT` is its
-   own token; `atom` builds a wing from `NAME ('.' NAME)*` and the
-   lambda rule eats the dot after its binder, so `\x.a.b` is
+   the collision between the qualifier dot and the lambda dot. `DOT` is
+   its own token; `atom` builds a qualified name from `NAME ('.' NAME)*`
+   and the lambda rule eats the dot after its binder, so `\x.a.b` is
    `Lambda("x", Name("a.b"))`.
 8. **A bare number is refused in expression position.** `atom :=
    … | NUMBER | …` in the sketch has nothing to compile to, since the
@@ -502,7 +506,7 @@ the interpretation chosen is the one that makes `EXAMPLES.md` work.
    an axis pick (`2@p`) and as fuel (`<t>@10`), both of which the lexer
    turns into their own token kinds.
 9. **Backend names are mangled on collision with an aviary bird.** The
-   kernel refuses to shadow a built-in, so an arm named `C` is defined
+   kernel refuses to shadow a built-in, so an equation named `C` is defined
    as `Cc` — the form `EXAMPLES.md`'s codegen notes record. Mangling
    never changes a compiled term; `Expansion.backend` records the map.
 10. **The prelude is `pair`, `hd`, `tl`.** `[a b]` compiles to
@@ -519,7 +523,7 @@ the interpretation chosen is the one that makes `EXAMPLES.md` work.
     that substituting an argument into a macro body alpha-renames any
     binder of the body that would capture a name free in the argument.
     That is what is implemented and tested; a real definition-site
-    environment arrives with the subject.
+    scope arrives with the standard library.
 
 13. **The object type is identified by shape, not by name.** It is the
     unique declared type with exactly one constructor carrying two fields
@@ -548,25 +552,26 @@ the interpretation chosen is the one that makes `EXAMPLES.md` work.
     `step m (Just m) (f n2)` and `n Nothing …`; for the T3 shape
     `step m (f n2) (RVal m) RErr` and `n RTime …` — the artifact's `wf1`
     and `wf5Abs1` exactly.
-16. **Default step arms are parameterized over `O`, not hard-wired.**
+16. **Default step equations are parameterized over `O`, not hard-wired.**
     `stepS` / `stepK` / `stepI` are generated only for leaf constructors
     literally named `S`, `K`, `I` (which is what §6c asks for), and take
     their two outcome constructors from `O`: "no redex" is `O`'s first
     terminal and a contraction is wrapped in `O`'s term-carrying
     constructor. The rebuilt `x z (y z)` is spelled with the object
     type's own application constructor and its own `rb`.
-17. **A core's fuel loop is its arm named `loop`, and the core's name
+17. **A core's fuel loop is its equation named `loop`, and the core's name
     denotes it.** `generate.py` adds `loop` and `loop1` only when `loop`
     is absent, and `step` only when `step` is absent, so a written one
     always wins. `loop1` without `loop` is refused. `SYNTAX.md` §3's
     `myInterp |- …` therefore has a term to name.
 18. **A core is an interpreter core** when an object type is declared and
-    the core writes any part of the interface: an arm named `step`,
+    the core writes any part of the interface: an equation named `step`,
     `loop`, or `step<C>` for a leaf `C` of the object type.
-19. **Arms are scoped to their core.** A core arm's backend name is
-    `core_arm`, and a name inside a core resolves to a sibling arm before
+19. **Equations are scoped to their core.** A core equation's backend
+    name is `core_equation`, and a name inside a core resolves to a
+    sibling equation before
     anything program-level, so two interpreter cores can each have their
-    own `step` while sharing one `sp`. Results are keyed `core.arm`, and
+    own `step` while sharing one `sp`. Results are keyed `core.name`, and
     also by the bare name when it is unambiguous program-wide.
 20. **`S`, `K` and `I` always mean the ISA at level 0**, even when the
     object type declares constructors of those names. That is
@@ -581,10 +586,10 @@ the interpretation chosen is the one that makes `EXAMPLES.md` work.
     lists in the standard subject. The prelude is now `pair`, `hd`, `tl`,
     `nil`, `cons`; a program may still define its own.
 22. **`omega` is written in the surface, not built in**
-    (`omega = S I I (S I I)`, a zero-binder top-level arm), so the one
+    (`omega = S I I (S I I)`, a zero-binder top-level equation), so the one
     authored difference between `wf5Abs` and `wf5Omg` stays visible in
     the source.
-23. **A closing `}` ends the last arm of a core**, so a one-arm core fits
+23. **A closing `}` ends the last equation of a core**, so a one-equation core fits
     on a line (`wf5Abs := { stepErr acc = Errd }`). Elsewhere the
     newline rule of decision 6 is unchanged.
 
@@ -594,7 +599,7 @@ the interpretation chosen is the one that makes `EXAMPLES.md` work.
     level-0 name — `UQ`, `whnfF`, `flipA`, `Suc` — is **inlined as its
     expanded level-0 term and then quoted**, exactly as the artifact
     writes `encP(A(UP, encP(IK)))`. §6b's shared quoted subject
-    `⟨subject⟩`, with library names resolving to axes into it, is
+    `<subject>`, with library names resolving to axes into it, is
     deferred; the cost of the decision is that a name used twice inside
     one quotation is duplicated in the datum instead of shared.
 25. **Nested quotation is a datum spliced as a term.** The inner `<I K>`
@@ -612,7 +617,7 @@ the interpretation chosen is the one that makes `EXAMPLES.md` work.
     if the program has none.
 28. **Quotation is packaged only at a definition's right-hand side.**
     `name := <t>` (a datum) and `name := I |- <t>@n` (an executable)
-    compile; a `<t>` inside an arm body still raises, because §6 makes
+    compile; a `<t>` inside an equation body still raises, because §6 makes
     the level a property of the *declaration*.
 29. **Inner fuel is written in the surface, not as a numeric literal.**
     T2's `whnfF three <I K>` uses `three = Suc (Suc (Suc Zero))` over a
@@ -636,19 +641,19 @@ the interpretation chosen is the one that makes `EXAMPLES.md` work.
     already bounds the run.
 
 33. **A core may take parameters**, written after its name
-    (`wfQ e := { ... }`). They are prepended to every arm's binder list
-    and are in scope in every arm body; the core's loop is applied to
+    (`wfQ e := { ... }`). They are prepended to every equation's binder
+    list and are in scope in every equation body; the core's loop is applied to
     them before its fuel, so `wfQ E |- <t>@n` is `loop E n <t>` — the
     artifact's `wfQ e n m` order. An interpreter must be applied to all
     of them.
-34. **References between a core's arms stay raw**, so the parameters are
+34. **References between a core's equations stay raw**, so the parameters are
     passed explicitly (`stepScry1 e`, `f e n2`). Auto-applying them
     would break the fixpoint: `Y` ties the loop's generator, whose first
     argument is the loop itself, and the artifact passes that self raw to
     `loop1` and re-applies the parameters inside it.
-35. **An arm that does not need the parameters lives at program level.**
+35. **An equation that does not need the parameters lives at program level.**
     `scHit` takes `rest v`, not `e rest v`, which is why it is a
-    top-level arm and not a core arm — and why the compiled term matches.
+    top-level equation and not a core equation — and why the compiled term matches.
 36. **`O` and `R` are the *last two* outcome-shaped declarations.** §6c
     says "the first is `O`, the last is `R`", which breaks as soon as a
     program also declares an oracle answer type (`oanswer` is
@@ -685,13 +690,13 @@ the interpretation chosen is the one that makes `EXAMPLES.md` work.
     `EQ5` and an oracle answer type, and each fact's value must be a
     quotation, since a fact is data. `ns{}` is the resolver that always
     answers "not yet". Mount tables are not this step.
-43. **Quotation-defined names are expanded twice.** A level-0 arm may
+43. **Quotation-defined names are expanded twice.** A level-0 equation may
     name a datum that a quotation defines (`oracleIfKk acc = Just encI`
     with `encI := <I>`), so pass 6 builds every datum and its environment
     alias first, then re-expands every level-0 name. A closedness guard
     now rejects any term that still holds a non-`{S,K,I}` atom — it is
     what caught this.
-44. **Parentheses hide newlines**, so a long arm body may be wrapped by
+44. **Parentheses hide newlines**, so a long equation body may be wrapped by
     parenthesizing it. That falls out of decision 6 and is what makes
     `eqNP`'s five-continuation body readable.
 
@@ -706,12 +711,12 @@ the interpretation chosen is the one that makes `EXAMPLES.md` work.
     neither over- nor under-application means anything; in a case branch
     the parser already fixes the binder count at the arity.
 47. **§5's line refuses what it can *prove* is a function**, not
-    everything it cannot prove is data. An arm, a bare combinator, a
+    everything it cannot prove is data. An equation, a bare combinator, a
     lambda, a macro and a partially applied constructor are known
     functions; a binder's kind is unknown until Stage B, so `EQ a b`
     passes. §5 says as much: "the honest version is a type checker".
 48. **The quotation body is checked by the symbol tables, not the data
-    rule.** `<flipA [K I] K>` and `<UQ <I K>>` quote *arms*, which the
+    rule.** `<flipA [K I] K>` and `<UQ <I K>>` quote *supercombinators*, which the
     naive reading of §5 rule 3 would refuse — but §6a's whole point is
     that level-1 codegen expands a declaration and then quotes it. The
     check that belongs there is §6b's: every name resolves in one of the
@@ -730,7 +735,7 @@ the interpretation chosen is the one that makes `EXAMPLES.md` work.
     recognizably a `step<C>` name, and stays quiet otherwise rather than
     guessing.
 50. **`step<AppCtor>` is refused by name.** The application constructor
-    cannot have a step arm, so `stepApp` is a typo worth catching, and
+    cannot have a step equation, so `stepApp` is a typo worth catching, and
     `is_interpreter_core` looks at every constructor rather than only the
     leaves so that it is caught.
 51. **The dictionary's hash is Merkle over the tree**, `sha256`
@@ -761,26 +766,25 @@ says how.
    position has to disambiguate them, and `check_table` is a **strict
    bijection with no shared-kind exceptions** (`SHARED_KIND_ROWS` is
    gone).
-2. **The arm equation `=` was missing from the table.** *Resolved:* §2
-   now carries an "arm equation" row, same spelling in both lexicons;
+2. **The equation form `=` was missing from the table.** *Resolved:* §2
+   now carries an "equation" row, same spelling in both lexicons;
    maximal munch puts `===` and `=>` ahead of `=`.
 3. **Arms at top level were not in the grammar**, though `EXAMPLES.md`
    §2 and §3 use them. *Resolved:* §4's `decl` now reads
-   `type-decl | sig | arm | macro | core | def`. `Arm` is a top-level
-   declaration and compiles exactly as a one-arm core's arm.
+   `type-decl | sig | equation | macro | core | def`. An equation is a
+   top-level declaration and compiles exactly as the equation of a
+   one-equation core.
 4. **`@` was spent twice in ASCII** (axis pick `2@`, fuel `<t>@10`).
    *Resolved:* §4's lexing notes now state the rule this package
    implements — `<digits>@` is an axis pick, `@<digits>` or `@[]` is
    fuel — so `@` is not ambiguous and both lexicons hand the parser the
    same kinds.
 5. **`}` closes both a core and a namespace literal in ASCII**, while
-   Unicode has `⦄`. *Resolved:* §2's namespace-literal row now states
-   that `⦄` and `}` are one token kind. `⦄` is therefore declared in
-   `lexicon.UNICODE_ALIASES` rather than as a row, which is what keeps
-   the table a strict bijection; the renderer picks the closer from the
-   construct.
+   Unicode had its own closer. *Resolved:* both lexicons now close a
+   namespace literal with the ordinary `}`, so there is no alias and no
+   exception to the bijection; `UNICODE_ALIASES` is empty.
 6. **Subscript digits appear both inside identifiers** (`flipK₁`) **and
-   as the fuel notation** (`⟨t⟩₁₀`). *Resolved:* §4's lexing notes now
+   as the fuel notation** (`<t>₁₀`). *Resolved:* §4's lexing notes now
    say they do not collide because a subscript cannot start an
    identifier, and that identifier subscripts normalize to ASCII digits
    — which is what the Unicode lexer does, so `flipK₁` and `flipK1`
@@ -791,7 +795,7 @@ says how.
    emits the glyph. Tree round-trip is unaffected, which is the law that
    matters.
 8. **`add` = 42 was given without its construction.** *Resolved:* the
-   construction is now pinned here as decisions 3 and 4 below (per-arm
+   construction is now pinned here as decisions 3 and 4 below (per-equation
    `Y`-tied generator, branch lambda lifted into its own
    supercombinator), so the number is reproducible rather than
    coincidental; `sub` = 43 follows from the same two.
@@ -799,19 +803,19 @@ says how.
 Six more, reported against `SURFACE-LANGUAGE-DESIGN.md` §6c and
 `SYNTAX.md` §3 after step 3, now rewritten there:
 
-9. **"One step arm per constructor" meant per *leaf*.** *Resolved:* §6c
-   now reads "One step arm per leaf", and says why the application
+9. **"One step equation per constructor" meant per *leaf*.** *Resolved:*
+   §6c now reads "One step equation per leaf", and says why the application
    constructor cannot have one — it is the spine the walker descends,
    not a head that fires.
 10. **§6c had no result type, though the loop needs two.** *Resolved:*
     §6c now declares "Two more types: the step outcome `O` and the
-    result `R`", says the arms return `O` and the loop returns `R`, and
-    says why: the loop has a timeout the arms cannot express.
+    result `R`", says the equations return `O` and the loop returns `R`, and
+    says why: the loop has a timeout they cannot express.
 11. **§6c did not say how the application constructor is found.**
     *Resolved:* §6c now identifies the object type by shape — the one
     type with exactly one constructor carrying two fields of its own
     type — and makes zero, two, or a non-leaf sibling an error.
-12. **The default arms key off names while everything else keys off
+12. **The default equations key off names while everything else keys off
     shape.** *Resolved:* §6c now states it as a deliberate exception —
     "the one place a name rather than a shape decides what the ISA is" —
     and says a leaf named otherwise gets no default and must be written.
@@ -831,10 +835,10 @@ after step 4, now rewritten there:
 
 15. **§6b's level-1 table could not be implemented**: it resolved library
     names to axes into a quoted standard subject that does not exist.
-    *Resolved:* §6b now marks the shared `⟨subject⟩` as the destination
+    *Resolved:* §6b now marks the shared `<subject>` as the destination
     and states inlining as the current rule — which is what this package
     does, and what makes the paper's tower counts reproduce.
-16. **§6 stated the executable as `interp E n ⟨program⟩`**, as if the
+16. **§6 stated the executable as `interp E n <program>`**, as if the
     resolver position were universal, though `whnfF` takes only fuel and
     program. *Resolved:* §6 now says the executable's arity is the
     interpreter's.
@@ -888,9 +892,9 @@ constructors, is item 25 above: it was open for one round and is now
 fixed in the note.)
 
 23. **§5 rule 3 read literally forbids the paper's own tower.** "A value
-    of function type (a gate, a core, an arm) … cannot be compared,
+    of function type (a gate, a core, a supercombinator) … cannot be compared,
     quoted, or stored as a fact" — but `<flipA [K I] K>`, `<UQ <I K>>`
-    and `<whnfF three <I K>>` all quote arms, and they are T1 and T2.
+    and `<whnfF three <I K>>` all quote supercombinators, and they are T1 and T2.
     The rule is about turning a *live value* into data at runtime, which
     the language has no form for; compile-time quotation is §6a's
     expand-then-encode. The data check therefore runs at `EQ`, at a
@@ -915,9 +919,9 @@ it is `Just`, so iterative deepening stopped at the first budget and
 called a timeout a success. The loop rule says "`R`'s last **terminal**"
 — fixed as `run.timeout_constructor`, with a test naming both shapes.
 
-**Step 5a.** A level-0 arm naming a quotation-defined datum
+**Step 5a.** A level-0 equation naming a quotation-defined datum
 (`oracleIfKk acc = Just encI`) compiled with `encI` left as a *free
-atom*, because quote definitions are built after arms. It showed up as
+atom*, because quote definitions are built after equations. It showed up as
 `oracleIfKk` differing from the paper's. Fixed by expanding every
 level-0 name again once pass 6 has defined the aliases, and guarded
 permanently by a closedness check that refuses any compiled term holding
@@ -947,7 +951,7 @@ python/
     render.py     tree -> text in either lexicon
     expand.py     macros, cases, cells/picks, cores, bracket abstraction,
                   and level-1 packaging
-    generate.py   the type-generated forms: walker, rebuilder, step arms, loop
+    generate.py   the type-generated forms: walker, rebuilder, step equations, loop
     quote.py      Scott encoding over an object type; the level-1 table
     run.py        running level 0 and level 1, peeling, decoding, the fuel
                   policy, and the blocking re-run driver
@@ -964,3 +968,23 @@ python/
     test_check.py   test_dictionary.py   test_cli.py
     test_interpreter.py   -- the milestones, against the paper's artifact
 ```
+
+## A note on vocabulary
+
+Three levels, named consistently in the notes and now in the code: an
+**equation** `f x y = body` is what an author writes, a
+**supercombinator** is the closed `Y`-tied term it compiles to, and a
+**core** is the group it is declared in. The AST node is `A.Equation`,
+a core entry's backend name is `core_equation`, and Stage A reports
+`in core C, equation f`.
+
+The rename cost one `__str__` rather than a hundred f-strings because
+`Problem.where` is a `Site` — a structured `(kind, name, core)` with a
+`.dotted` for the qualified name — instead of a pre-formatted string.
+`Site` is the place to look if the vocabulary moves again.
+
+One word is deliberately not covered by that split. `Expansion.helpers`
+holds lambda-lifted supercombinators with no equation behind them, since
+every lambda and every case branch produces one too; "a supercombinator
+is what an equation compiles to" is therefore the common case and not
+the whole rule.

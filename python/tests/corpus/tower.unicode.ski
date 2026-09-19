@@ -1,13 +1,13 @@
 ⍝ The paper's tower, written in the surface.  T1 runs the emulator over
 ⍝ the unquoter; T2 runs the emulator over the emulator.
 ⍝
-⍝ Inside ⟨ ⟩ the names `UQ`, `whnfF`, `Suc` and `Zero` are level-0 names
+⍝ Inside < > the names `UQ`, `whnfF`, `Suc` and `Zero` are level-0 names
 ⍝ and are inlined as their expanded terms before the whole is quoted,
 ⍝ which is what the artifact writes as encP(A(UP, encP(IK))).  A nested
-⍝ ⟨ ⟩ is a datum, inlined the same way.
-term ≡ S ∣ K ∣ I ∣ App term term
-maybe ≡ Nothing ∣ Just term
-nat ≡ Zero ∣ Suc nat
+⍝ < > is a datum, inlined the same way.
+term ≡ S | K | I | App term term
+maybe ≡ Nothing | Just term
+nat ≡ Zero | Suc nat
 
 whnfF ≔ { step m = sp m nil stepS stepK stepI }
 
@@ -18,10 +18,10 @@ UQ m = m S K I (UQA UQ)
 three = Suc (Suc (Suc Zero))
 
 ⍝ T0 as a level-1 declaration, for comparison
-t0 ≔ whnfF ⊢ ⟨I K⟩₃
+t0 ≔ whnfF ⊢ <I K>₃
 
 ⍝ T1: the emulator over the unquoter
-t1 ≔ whnfF ⊢ ⟨UQ ⟨I K⟩⟩₁₂₀
+t1 ≔ whnfF ⊢ <UQ <I K>>₁₂₀
 
 ⍝ T2: the emulator over the emulator
-t2 ≔ whnfF ⊢ ⟨whnfF three ⟨I K⟩⟩₅₀₀
+t2 ≔ whnfF ⊢ <whnfF three <I K>>₅₀₀

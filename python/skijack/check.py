@@ -35,7 +35,7 @@ Two readings this pass takes, both stated in the README:
   branch the parser already fixes the binder count at the arity.
 * **§5's data/function line refuses what it can prove is a function**,
   not everything it cannot prove is data.  With no types, a binder's
-  kind is unknown until Stage B; an arm name, a bare combinator, a
+  kind is unknown until Stage B; an equation name, a bare combinator, a
   lambda, a macro and a partially applied constructor are known
   functions, and those are refused.
 """
@@ -45,7 +45,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
-from aviary_kernel.birds import BY_NAME
+from .abi import ISA as _ISA, TIER1_NAMES
 
 from . import ast as A
 from .generate import (GenerateError, find_object_type, find_path_type,
@@ -57,7 +57,9 @@ __all__ = [
 ]
 
 
-class CheckError(Exception):
+from .errors import SkijackError
+
+class CheckError(SkijackError):
     """Base of every Stage A rejection.  Carries ``.problems``."""
     problems: Tuple["Problem", ...] = ()
 
@@ -87,16 +89,39 @@ class ScopeError(CheckError):
 
 
 @dataclass(frozen=True)
+class Site:
+    """Where a problem is.
+
+    A structured site rather than a pre-formatted string, because the
+    words in it are vocabulary: an *equation* is the source form, a
+    *core* is the group it is declared in.  Renaming what we call these
+    is then one ``__str__`` and not a hundred f-strings.
+    """
+    kind: str                       # "equation", "core", "definition"
+    name: str
+    core: Optional[str] = None
+
+    @property
+    def dotted(self) -> str:
+        """The qualified name, as the dictionary spells it."""
+        return f"{self.core}.{self.name}" if self.core else self.name
+
+    def __str__(self) -> str:
+        if self.core is not None:
+            return f"core {self.core}, equation {self.name}"
+        return f"{self.kind} {self.name}"
+
+
+@dataclass
 class Problem:
     kind: type
-    where: str
+    where: Site
     message: str
 
     def __str__(self) -> str:
         return f"{self.kind.__name__} in {self.where}: {self.message}"
 
 
-_ISA = ("S", "K", "I")
 
 
 @dataclass
@@ -104,8 +129,8 @@ class _Env:
     types: Dict[str, A.TypeDecl] = field(default_factory=dict)
     ctors: Dict[str, Tuple[str, int, int]] = field(default_factory=dict)
     macros: Dict[str, A.Macro] = field(default_factory=dict)
-    arms: Dict[str, A.Arm] = field(default_factory=dict)        # top level
-    core_arms: Dict[str, Dict[str, A.Arm]] = field(default_factory=dict)
+    equations: Dict[str, A.Equation] = field(default_factory=dict)        # top level
+    core_equations: Dict[str, Dict[str, A.Equation]] = field(default_factory=dict)
     cores: Dict[str, A.Core] = field(default_factory=dict)
     defs: Dict[str, A.Def] = field(default_factory=dict)
     generated: Set[str] = field(default_factory=set)
@@ -115,16 +140,16 @@ class _Env:
     prelude: Tuple[str, ...] = ()
 
     def known(self, name: str, core: Optional[str]) -> bool:
-        if name in _ISA or name in BY_NAME or name in self.prelude:
+        if name in _ISA or name in TIER1_NAMES or name in self.prelude:
             return True
         if core is not None:
-            if name in self.core_arms.get(core, ()):
+            if name in self.core_equations.get(core, ()):
                 return True
             if name in self.core_generated.get(core, ()):
                 return True
             if name in self.cores[core].params:
                 return True
-        return (name in self.ctors or name in self.arms or name in self.defs
+        return (name in self.ctors or name in self.equations or name in self.defs
                 or name in self.cores or name in self.generated
                 or name in self.macros)
 
@@ -173,19 +198,19 @@ class _Checker:
             elif isinstance(d, A.Macro):
                 declare(d.name, "macro", f"macro {d.name}")
                 e.macros[d.name] = d
-            elif isinstance(d, A.Arm):
-                declare(d.name, "arm", f"arm {d.name}")
-                e.arms[d.name] = d
+            elif isinstance(d, A.Equation):
+                declare(d.name, "equation", Site("equation", d.name))
+                e.equations[d.name] = d
             elif isinstance(d, A.Core):
-                declare(d.name, "core", f"core {d.name}")
+                declare(d.name, "core", Site("core", d.name))
                 e.cores[d.name] = d
-                inner: Dict[str, A.Arm] = {}
-                for arm in d.arms:
-                    if arm.name in inner:
-                        self.add(ScopeError, f"core {d.name}",
-                                 f"arm {arm.name!r} is defined twice")
-                    inner[arm.name] = arm
-                e.core_arms[d.name] = inner
+                inner: Dict[str, A.Equation] = {}
+                for equation in d.equations:
+                    if equation.name in inner:
+                        self.add(ScopeError, Site("core", d.name),
+                                 f"equation {equation.name!r} is defined twice")
+                    inner[equation.name] = equation
+                e.core_equations[d.name] = inner
             elif isinstance(d, A.Def):
                 declare(d.name, "definition", f"definition {d.name}")
                 e.defs[d.name] = d
@@ -202,8 +227,8 @@ class _Checker:
 
     def run(self) -> List[Problem]:
         for d in self.program.decls:
-            if isinstance(d, A.Arm):
-                self.expr(d.body, f"arm {d.name}", None, set(d.binders))
+            if isinstance(d, A.Equation):
+                self.expr(d.body, Site("equation", d.name), None, set(d.binders))
             elif isinstance(d, A.Macro):
                 self.expr(d.body, f"macro {d.name}", None, set(d.params),
                           macro=True)
@@ -215,14 +240,14 @@ class _Checker:
 
     def core(self, d: A.Core) -> None:
         bound = set(d.params)
-        for arm in d.arms:
-            self.expr(arm.body, f"core {d.name}, arm {arm.name}", d.name,
-                      bound | set(arm.binders))
+        for equation in d.equations:
+            self.expr(equation.body, Site("equation", equation.name, d.name), d.name,
+                      bound | set(equation.binders))
         if self.env.obj is not None and is_interpreter_core(d, self.env.obj):
             self.interface(d)
 
     def definition(self, d: A.Def) -> None:
-        where = f"definition {d.name}"
+        where = Site("definition", d.name)
         if isinstance(d.expr, A.NsLit):
             for path, value in d.expr.facts:
                 self.path_literal(path, where)
@@ -366,7 +391,7 @@ class _Checker:
         nm = head.name
         if nm in bound:
             return None
-        if nm in _ISA or nm in BY_NAME:
+        if nm in _ISA or nm in TIER1_NAMES:
             return f"the combinator {nm!r}"
         if nm in self.env.ctors:
             arity = self.env.ctors[nm][2]
@@ -376,11 +401,11 @@ class _Checker:
             return None
         if nm in self.env.macros:
             return f"the macro {nm!r}"
-        if nm in self.env.arms and self.env.arms[nm].binders:
-            return f"the arm {nm!r}"
-        if core is not None and nm in self.env.core_arms.get(core, ()):
-            if self.env.core_arms[core][nm].binders:
-                return f"the arm {nm!r}"
+        if nm in self.env.equations and self.env.equations[nm].binders:
+            return f"the equation {nm!r}"
+        if core is not None and nm in self.env.core_equations.get(core, ()):
+            if self.env.core_equations[core][nm].binders:
+                return f"the equation {nm!r}"
         if nm in self.env.cores:
             return f"the core {nm!r}"
         return None
@@ -506,19 +531,19 @@ class _Checker:
 
     def interface(self, d: A.Core) -> None:
         obj = self.env.obj
-        where = f"core {d.name}"
+        where = Site("core", d.name)
         leaves = [c.name for c in obj.leaves]
-        for arm in d.arms:
-            if not arm.name.startswith("step") or arm.name == "step":
+        for equation in d.equations:
+            if not equation.name.startswith("step") or equation.name == "step":
                 continue
-            rest = arm.name[4:]
+            rest = equation.name[4:]
             if rest == obj.app.name:
                 self.add(InterfaceError, where,
-                         f"{arm.name!r}: the application constructor "
-                         f"{obj.app.name!r} has no step arm -- it is the "
+                         f"{equation.name!r}: the application constructor "
+                         f"{obj.app.name!r} has no step equation -- it is the "
                          f"spine the walker descends, not a head that fires "
                          f"(§6c)")
-        written = {arm.name: arm for arm in d.arms}
+        written = {equation.name: equation for equation in d.equations}
         if "step" in written:
             self.step_arm(written["step"], d, leaves, where)
         if "loop" in written:
@@ -539,18 +564,18 @@ class _Checker:
                      f"parameters; this one has "
                      f"{len(written['loop1'].binders)}")
 
-    def step_arm(self, arm: A.Arm, d: A.Core, leaves, where) -> None:
-        if len(arm.binders) != 1:
+    def step_arm(self, equation: A.Equation, d: A.Core, leaves, where) -> None:
+        if len(equation.binders) != 1:
             self.add(InterfaceError, where,
                      f"a written 'step' takes the term, one binder after the "
-                     f"core's parameters; this one has {len(arm.binders)}")
+                     f"core's parameters; this one has {len(equation.binders)}")
             return
-        head, args = _spine(arm.body)
+        head, args = _spine(equation.body)
         if not (isinstance(head, A.Name) and head.name == "sp"):
             return                      # not the generated shape; leave it
         if len(args) != 2 + len(leaves):
             self.add(InterfaceError, where,
-                     f"'step' hands the walker {len(args) - 2} step arm(s) "
+                     f"'step' hands the walker {len(args) - 2} step equation(s) "
                      f"but the object type has {len(leaves)} leaves "
                      f"({', '.join(leaves)})")
             return
@@ -562,7 +587,7 @@ class _Checker:
         if all(g is not None and g.startswith("step") for g in got) \
                 and sorted(got) == sorted(want) and got != want:
             self.add(InterfaceError, where,
-                     f"'step' installs the leaf arms in the order "
+                     f"'step' installs the leaf equations in the order "
                      f"{', '.join(got)}, but the object type declares "
                      f"{', '.join(leaves)}; declaration order is the ABI and "
                      f"a wrong order is silent wrong semantics "

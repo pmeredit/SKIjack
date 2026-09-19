@@ -1,2 +1,2 @@
 ⍝ EXAMPLES.md section 5: a value lookup.  Parse and round-trip only.
-prog ≔ ⟨I ∵/k/three⟩₍₎
+prog ≔ <I ∵/k/three>₍₎

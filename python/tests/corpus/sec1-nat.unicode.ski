@@ -1,7 +1,7 @@
 ⍝ EXAMPLES.md section 1: numerals -- increment, decrement, addition,
 ⍝ subtraction.  Numerals are Scott numerals, a declared type like any
 ⍝ other.
-nat ≡ Zero ∣ Suc nat
+nat ≡ Zero | Suc nat
 
 arith ≔ {
   inc n   = Suc n

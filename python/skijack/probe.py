@@ -31,7 +31,9 @@ __all__ = ["fast_reduce", "dag_size", "Prober", "SIZE_CHECK_EVERY",
 SIZE_CHECK_EVERY = 512
 
 
-class ProbeError(Exception):
+from .errors import SkijackError
+
+class ProbeError(SkijackError):
     pass
 
 

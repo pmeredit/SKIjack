@@ -22,7 +22,7 @@ PROGRAMS = ("sec1-nat", "sec2-c", "sec3-swap", "interp-whnff", "scry-wfq",
 
 #: One table is one ABI.  These four share the prelude and disagree about
 #: nothing, so they merge; the scry programs walk a *different* object
-#: type, so their `sp`, `rb` and step arms are different terms under the
+#: type, so their `sp`, `rb` and step equations are different terms under the
 #: same names and the table refuses to hold both (see the conflict test).
 ONE_ABI = ("sec1-nat", "sec2-c", "sec3-swap", "interp-whnff")
 
@@ -36,7 +36,7 @@ def built():
 @pytest.fixture(scope="module")
 def standard(built):
     """One table over every program: the prelude, `Y`, the Scott
-    constructors of every declared type, every arm, every core's loop."""
+    constructors of every declared type, every equation, every core's loop."""
     d = None
     for stem in ONE_ABI:
         d = from_expansion(built[stem], dictionary=d)
@@ -190,7 +190,7 @@ def test_lift_leaves_an_unknown_term_entirely_raw(standard):
 
 
 def test_the_tie_break_prefers_the_name_a_reader_would_write(built):
-    """One arm is reachable as `dec` and as `arith.dec`; lift picks the
+    """One equation is reachable as `dec` and as `arith.dec`; lift picks the
     unqualified one."""
     e = built["sec1-nat"]
     d = from_expansion(e)
@@ -230,7 +230,7 @@ def test_lifting_step_names_the_walker_and_the_three_arms(built):
 def test_lifting_whnfF_names_Y_at_its_head(built):
     standard = from_expansion(built["interp-whnff"])
     """The paper's appendix observation: the first fourteen atoms of a
-    Y-tied arm are `Y`."""
+    Y-tied equation are `Y`."""
     e = built["interp-whnff"]
     t = e.term("whnfF")
     lifted = lift(t, standard, exclude=whole_names(standard, t))
@@ -247,7 +247,7 @@ def test_lifting_whnfF_through_its_wrappers_names_the_whole_interface(
         built):
     standard = from_expansion(built["interp-whnff"])
     """Largest match first, so `loop1` hides what is inside it; exclude
-    the wrappers and the walker, the rebuilder's arms and `Y` come out."""
+    the wrappers and the walker, the rebuilder's equations and `Y` come out."""
     e = built["interp-whnff"]
     t = e.term("whnfF")
     lifted = lift(t, standard,
