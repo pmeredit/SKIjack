@@ -28,7 +28,7 @@ def _lexicon_of(path: str, given: str) -> str:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(
-        prog="python3 -m skijack",
+        prog="skijack",
         description="compile, check, render, lift and run a .ski program")
     ap.add_argument("file")
     ap.add_argument("--lexicon", default="auto",

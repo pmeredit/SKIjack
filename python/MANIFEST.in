@@ -1,0 +1,4 @@
+include README.md
+include NOTES.md
+recursive-include skijack/corpus *.ski
+recursive-include tests *.py

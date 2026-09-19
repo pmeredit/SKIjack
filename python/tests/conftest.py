@@ -1,9 +1,13 @@
 import os
 import pathlib
 
+import skijack
+
 import pytest
 
-CORPUS = pathlib.Path(__file__).parent / "corpus"
+# the corpus ships inside the package: it is the conformance suite, and
+# `pip install skijack` should carry the examples the paper cites.
+CORPUS = pathlib.Path(skijack.__file__).parent / "corpus"
 
 #: every corpus file, as (stem, lexicon, path)
 ALL_SOURCES = sorted(

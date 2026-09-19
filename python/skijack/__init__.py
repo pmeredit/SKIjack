@@ -42,7 +42,7 @@ def compile(source: str, lexicon: str = "ascii", *, check: bool = True,
 compile_source = compile
 from .probe import Prober, fast_reduce
 
-__version__ = "0.1.0"
+from ._version import __version__
 
 __all__ = [
     "ast", "SkijackError", "lex_ascii", "lex_unicode", "LexError",

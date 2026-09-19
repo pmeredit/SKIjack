@@ -4,17 +4,52 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "skijack"
-version = "0.1.0"
-description = "A subject-oriented surface language over SKI: syntax and codegen"
+dynamic = ["version"]
+description = "A supercombinator surface language over the SKI calculus, compiling to closed {S,K,I} terms"
 readme = "README.md"
 requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "N. E. Davis" }]
+keywords = [
+  "combinatory-logic", "SKI", "combinator", "compiler",
+  "bracket-abstraction", "supercombinator", "metacircular",
+  "self-interpreter", "Scott-encoding",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Mathematics",
+  "Topic :: Software Development :: Compilers",
+  "Topic :: Software Development :: Interpreters",
+]
 dependencies = ["aviary-kernel>=0.1.0"]
 
 [project.optional-dependencies]
 test = ["pytest>=7"]
 
+[project.urls]
+Homepage = "https://github.com/sigilante/SKIjack"
+Repository = "https://github.com/sigilante/SKIjack"
+Issues = "https://github.com/sigilante/SKIjack/issues"
+
+[project.scripts]
+skijack = "skijack.__main__:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "skijack._version.__version__" }
+
 [tool.setuptools.packages.find]
 include = ["skijack*"]
+
+[tool.setuptools.package-data]
+# the conformance corpus is shipped: it is the specification's examples,
+# and a second implementation is correct when it reproduces them
+"skijack.corpus" = ["*.ski"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
