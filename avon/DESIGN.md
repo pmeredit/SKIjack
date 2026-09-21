@@ -1,5 +1,7 @@
 # Avon: the native runtime, planned
 
+> **Status (2026-09-21).** Design note written 2026-09-16. The compiler it targets is now implemented as `python/skijack`; the runtime it plans is not built, and `avon/bench/` reproduces the measurements it rests on. Where this note and the compiler differ, the compiler and its tests are authoritative.
+
 *2026-09-16. The build plan for the C runtime named in `RUNTIME-DESIGN.md`
 §3a. Its constraints come from three places: the reference host
 (`aviary_kernel.reduce`, which is where the paper's counts come from), the

@@ -1,6 +1,8 @@
 # Design note: a supercombinator surface language over SKI
 
-*2026-09-16. Follow-up to the paper ~/ski-in-ski/mss.tex, not part of
+> **Status (2026-09-21).** Design note written 2026-09-16, before the implementation existed. The language it specifies is now implemented as `python/skijack`; decisions taken since are recorded in `python/NOTES.md`. Where this note and the code differ, the code and its tests are authoritative. The note is kept in place because the implementation's docstrings cite it by section.
+
+*2026-09-16. Follow-up to the paper whose artifact is `artifact-metacircular-ski`, not part of
 it. This note fixes the kernel forms, the ABI, and the compile rules
 for a Hoon-like macro language whose target is closed `{S,K,I}` terms,
 so that syntax can be designed against a stable target. Nothing here is
@@ -384,7 +386,7 @@ An interpreter is a core that the compiler can put in the `interp`
 position. Its interface is generated from, or checked against, three
 type declarations, and the reference implementation reproduces the
 paper's `whnfF`, `wf5Abs`, and `wf5Omg` from this interface atom for
-atom (`python/tests/corpus/interp-*.ski`).
+atom (`python/skijack/corpus/interp-*.ski`).
 
 - **The object type** (the alphabet), identified by shape: the one
   declared type with exactly one constructor carrying two fields of its
@@ -470,7 +472,7 @@ Scott-encoded `{S,K,I}` terms. Both are data, so the compiler is
 definable in the language and compiles to a closed term, the analogue of
 `++mint` in `hoon.hoon`. Its core is bracket abstraction over encoded
 terms with a variable tag, the same combinator the partial-evaluation
-design (`~/ski-in-ski/PARTIAL-EVALUATION-DESIGN.md`, Stage 4) needs to unfold under
+design (`PARTIAL-EVALUATION-DESIGN.md`, an unpublished note in the paper's working repository, Stage 4) needs to unfold under
 an unknown head. Building it once serves both. Cost is unknown; a few
 thousand atoms is the guess, and running it on itself is a T2-scale
 computation.

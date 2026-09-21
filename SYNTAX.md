@@ -1,5 +1,7 @@
 # Syntax direction
 
+> **Status (2026-09-21).** Design note written 2026-09-16, before the implementation existed. The language it specifies is now implemented as `python/skijack`; decisions taken since are recorded in `python/NOTES.md`. Where this note and the code differ, the code and its tests are authoritative. The note is kept in place because the implementation's docstrings cite it by section.
+
 *2026-09-16. Decisions taken on the surface, ahead of a grammar. Sits
 under `DESIDERATA.md` (what the language must be) and beside
 `SURFACE-LANGUAGE-DESIGN.md` (what forms exist and what they compile to).

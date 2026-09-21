@@ -1,5 +1,7 @@
 # Design note: the runtime
 
+> **Status (2026-09-21).** Design note written 2026-09-16. The compiler it targets is now implemented as `python/skijack`; the runtime it plans is not built, and `avon/bench/` reproduces the measurements it rests on. Where this note and the compiler differ, the compiler and its tests are authoritative.
+
 *2026-09-16. Companion to `SURFACE-LANGUAGE-DESIGN.md`. The language
 note fixes what programs compile to; this note fixes what runs them and
 why a real runtime is needed for the language to be viable. Nothing here

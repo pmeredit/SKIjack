@@ -1,5 +1,7 @@
 # Examples
 
+> **Status (2026-09-21).** Design note written 2026-09-16, before the implementation existed. The language it specifies is now implemented as `python/skijack`; decisions taken since are recorded in `python/NOTES.md`. Where this note and the code differ, the code and its tests are authoritative. The note is kept in place because the implementation's docstrings cite it by section.
+
 *2026-09-16. Every example is given in both spellings of `SYNTAX.md`, then
 its codegen as produced by the reference expander (`aviary-kernel`'s
 bracket abstraction, the same one the paper's artifact uses), then the
@@ -269,7 +271,7 @@ the artifact's; `whnfF 3 <I K>` reaches weak head normal form in exactly
 back to source, and compiling it as plain user source with generation
 switched off gives the same 618-atom term byte for byte, with `sp`,
 `rb`, and the three equations each identical to the hand-written originals,
-and T0 at 340 (`python/tests/corpus/interp-whnff-written.*.ski`, both
+and T0 at 340 (`python/skijack/corpus/interp-whnff-written.*.ski`, both
 spellings). Parsing that file back gives the same tree as generating
 from the short source, so the two cannot drift apart.
 

@@ -1,8 +1,10 @@
 # Desiderata: the language as a macro
 
+> **Status (2026-09-21).** Design note written 2026-09-16, before the implementation existed. The language it specifies is now implemented as `python/skijack`; decisions taken since are recorded in `python/NOTES.md`. Where this note and the code differ, the code and its tests are authoritative. The note is kept in place because the implementation's docstrings cite it by section.
+
 *2026-09-16. What the language must be, stated before syntax, with
 `~/urbit/nockasm` as the model for the discipline (not the notation) and
-the paper in `~/ski-in-ski` as the source of the constraints. This note
+the paper's artifact (now public as `artifact-metacircular-ski`) as the source of the constraints. This note
 sits above `SURFACE-LANGUAGE-DESIGN.md`, which fixes the ABI and compile
 rules, and `RUNTIME-DESIGN.md`, which fixes what runs the output.*
 
