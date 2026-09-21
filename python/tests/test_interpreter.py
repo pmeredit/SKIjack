@@ -2,7 +2,7 @@
 interpreter, written in the surface, compiled, and checked against the
 artifact atom for atom and count for count.
 
-The oracle is the artifact itself (`~/ski-in-ski/tower_harness.py`),
+The oracle is the artifact itself (`tower_harness.py` in `artifact-metacircular-ski`),
 loaded read-only by the `oracle` fixture.
 """
 

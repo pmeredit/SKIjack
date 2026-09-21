@@ -16,9 +16,10 @@ It also runs the differential that says sharing is safe (same normal forms
 as the reference on random terms) and the cycle check that says consing is
 not obviously safe (a cons can return an ancestor of the redex).
 
-    python3 avon/bench/strategies.py            # needs ~/ski-in-ski on disk
+    SKIJACK_ARTIFACT_DIR=/path/to/artifact-metacircular-ski python3 avon/bench/strategies.py
 
-Requires: aviary-kernel, and ``~/ski-in-ski/tower_harness.py`` for the
+Requires: aviary-kernel, and ``tower_harness.py`` from a checkout of
+``artifact-metacircular-ski`` (``SKIJACK_ARTIFACT_DIR``, default ``<repo>/artifact``) for the
 compiled interpreter and the encoder.
 """
 from __future__ import annotations
@@ -29,7 +30,9 @@ import sys
 import threading
 import time
 
-SKI_IN_SKI = os.path.expanduser("~/ski-in-ski")
+SKI_IN_SKI = os.path.expanduser(os.environ.get(
+    "SKIJACK_ARTIFACT_DIR",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "artifact")))
 ARITY = {"S": 3, "K": 2, "I": 1}
 
 # a node is a 4-list [tag, l, r, name]; tag in "A" app, "R" indirection,
