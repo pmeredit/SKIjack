@@ -361,3 +361,42 @@ def test_the_policy_still_reports_a_cap(built):
     r = run_with_namespace(e, e.level1["pOmega"], {}, None, 10,
                            start=2, cap=8)
     assert r.constructor == "RTimeN"
+
+
+# ------------------------------------------- the paper's character table
+
+@pytest.fixture(scope="module")
+def chars():
+    return {lx: expand_program(parse(source("parse-chars", lx), lx))
+            for lx in LEXICONS}
+
+
+@pytest.mark.parametrize("lx", LEXICONS)
+def test_the_character_table_compiles_to_the_papers_sizes(chars, lx):
+    e = chars[lx]
+    assert e.sizes["chars"] == 8_707        # the three-fact literal
+    assert len(e.namespaces["chars"]) == 3
+    assert [e.sizes[n] for n in ("one", "apply", "disc", "held")] == \
+        [12_580, 15_374, 18_203, 18_283]
+
+
+@pytest.mark.parametrize("lx", LEXICONS)
+@pytest.mark.parametrize("name,steps", [("one", 16_150), ("apply", 62_199),
+                                        ("disc", 47_257), ("held", 16_739)])
+def test_the_character_table_runs_to_the_papers_counts(chars, lx, name, steps):
+    ctor, value, n = read(chars[lx], name)
+    assert (ctor, n) == ("RValN", steps)
+    # `held` stops with S unsaturated, so its two unread lookups come back
+    # in the term; the other three reduce to the looked-up combinator.
+    assert value.startswith("S (Scry") if name == "held" else value == "S"
+
+
+def test_a_discarded_lookup_is_never_performed(chars):
+    """`K S I` keeps S, so /src/eye is discarded rather than read.
+
+    Lookup cost is linear in a fact's position in the literal, so a
+    performed third probe would cost about fifteen thousand more.
+    """
+    _, _, disc = read(chars["ascii"], "disc")
+    _, _, apply_ = read(chars["ascii"], "apply")
+    assert disc < apply_          # three paths written, but one fewer read
