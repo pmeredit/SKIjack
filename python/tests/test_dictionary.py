@@ -285,3 +285,20 @@ def test_lifting_is_the_jet_tables_operation(built):
     # prefers among `whnfF`, `loop` and `whnfF.loop`
     assert structural_hash(e.term("whnfF")) in index
     assert index[structural_hash(e.term("whnfF"))] == "loop"
+
+
+# ------------------------- the paper's supercombinator-vs-macro example
+
+def test_a_supercombinator_lifts_back_to_its_name_and_a_macro_does_not():
+    """S5.4's claim, on sec2-c.  flipK1 is literally C applied to K, so
+    against a dictionary that names C it lifts to `C K`; flipK2 went
+    through the macro, which rewrote the use site before abstraction, so
+    nothing of `flip` survives and the term names nothing."""
+    import skijack
+    from skijack import corpus
+    from skijack.render import render_ascii
+    e = skijack.compile(corpus.read("sec2-c"))
+    d = from_expansion(e, include=["C"])
+    assert render_ascii(lift(e.terms["flipK1"], d)) == "C K"
+    assert render_ascii(lift(e.terms["flipK2"], d)) == "S (K (S K)) K"
+    assert (e.sizes["flipK1"], e.sizes["flipK2"]) == (11, 5)
