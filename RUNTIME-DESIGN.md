@@ -5,7 +5,7 @@
 *2026-09-16. Companion to `SURFACE-LANGUAGE-DESIGN.md`. The language
 note fixes what programs compile to; this note fixes what runs them and
 why a real runtime is needed for the language to be viable. Nothing here
-is built. The research artifact in `~/ski-in-ski` runs on
+is built. The research artifact (public as `artifact-metacircular-ski`) runs on
 `aviary-kernel`'s Python reducer, and that remains the reference
 implementation for every count the paper reports.*
 
@@ -253,7 +253,7 @@ sources before they are cited anywhere.)
 
 ## 7. Relationship to the other repository
 
-`~/ski-in-ski` holds the paper, the reference artifact, and the numbers.
+The `artifact-metacircular-ski` repository holds the reference artifact and the numbers; the paper is deposited at doi:10.5281/zenodo.22867957.
 This repository holds the language (`SURFACE-LANGUAGE-DESIGN.md`) and
 the runtime (this note). The dependency runs one way: the runtime must
 reproduce the artifact's counts, and the language compiles to the

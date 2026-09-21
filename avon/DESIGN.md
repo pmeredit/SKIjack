@@ -641,7 +641,7 @@ a term. Avon exists to make that answer affordable, not to make it true.
 ## 16. Provenance of the numbers in this note
 
 Every count in §1, §2 and §13 was measured on this machine against
-`aviary-kernel` 0.1.0 and `~/ski-in-ski/tower_harness.py`. The script is
+`aviary-kernel` 0.1.0 and `tower_harness.py` from `artifact-metacircular-ski`. The script is
 `avon/bench/strategies.py`, and it reproduces the whole of §1 in about a
 second: the four strategies on the three targets, their node, probe, spine
 depth and result sizes, the cycle check, and the 2,986-term differential.
