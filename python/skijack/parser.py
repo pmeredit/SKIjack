@@ -61,7 +61,7 @@ def collect_ctors(tokens: List[Token]) -> Dict[str, Tuple[str, int, int]]:
         if i == 0 or tokens[i - 1].kind != "IDENT":
             raise ParseError(
                 f"line {tok.line}: type declaration needs a name on its left")
-        tname = tokens[i - 1].value
+        tname = tokens[i - 1].text
         j = i + 1
         groups: List[List[str]] = [[]]
         while tokens[j].kind not in ("NEWLINE", "EOF"):
@@ -69,7 +69,7 @@ def collect_ctors(tokens: List[Token]) -> Dict[str, Tuple[str, int, int]]:
             if t.kind == "ALT":
                 groups.append([])
             elif t.kind == "IDENT":
-                groups[-1].append(t.value)
+                groups[-1].append(t.text)
             else:
                 raise ParseError(
                     f"line {t.line}: unexpected {t.kind} in the declaration "
@@ -175,7 +175,7 @@ class _Parser:
         j = self.i
         names: List[str] = []
         while self.toks[j].kind == "IDENT":
-            names.append(self.toks[j].value)
+            names.append(self.toks[j].text)
             j += 1
         kind = self.toks[j].kind
         if not names or kind not in _DECL_OPS:
@@ -195,10 +195,10 @@ class _Parser:
         self.expect("TYPEDECL")
         ctors: List[A.Ctor] = []
         while True:
-            cname = self.expect("IDENT").value
+            cname = self.expect("IDENT").text
             fields: List[str] = []
             while self.toks[self.i].kind == "IDENT":
-                fields.append(self.toks[self.i].value)
+                fields.append(self.toks[self.i].text)
                 self.i += 1
             ctors.append(A.Ctor(cname, tuple(fields)))
             if self.toks[self.i].kind == "ALT":
@@ -213,10 +213,10 @@ class _Parser:
             raise ParseError(f"signature {names!r}: one name before ':'")
         self._take_names(1)
         self.expect("COLON")
-        types = [self.expect("IDENT").value]
+        types = [self.expect("IDENT").text]
         while self.toks[self.i].kind == "ARROW":
             self.i += 1
-            types.append(self.expect("IDENT").value)
+            types.append(self.expect("IDENT").text)
         self.end_of_decl()
         return A.Sig(names[0], tuple(types))
 
@@ -301,11 +301,11 @@ class _Parser:
         k = t.kind
         if k == "IDENT":
             self.next()
-            name = t.value
+            name = t.text
             while (self.toks[self.i].kind == "DOT"
                    and self.toks[self.i + 1].kind == "IDENT"):
                 self.i += 1
-                name += "." + self.expect("IDENT").value
+                name += "." + self.expect("IDENT").text
             return A.Name(name)
         if k == "LPAREN":
             self.next()
@@ -333,10 +333,10 @@ class _Parser:
             return A.Scry(self.path())
         if k == "AXIS":
             self.next()
-            return A.Pick(t.value, self.atom())
+            return A.Pick(t.number, self.atom())
         if k == "LAMBDA":
             self.next()
-            param = self.expect("IDENT").value
+            param = self.expect("IDENT").text
             self.expect("DOT")
             return A.Lambda(param, self.expr())
         if k == "NSOPEN":
@@ -366,7 +366,7 @@ class _Parser:
         segs: List[A.Seg] = []
         while self.toks[self.i].kind == "SLASH":
             self.i += 1
-            tag = self.expect("IDENT").value
+            tag = self.expect("IDENT").text
             payload = None
             if self.toks[self.i].kind == "LBRACK":
                 self.i += 1
@@ -407,14 +407,14 @@ class _Parser:
         out = []
         while True:
             t = self.expect("IDENT")
-            cname = t.value
+            cname = t.text
             if cname not in self.ctors:            # decision (a)
                 raise ParseError(
                     f"line {t.line}, column {t.col}: undeclared constructor "
                     f"{cname!r} in a case branch; declare it with "
                     f"'type === {cname} ...' before use")
             _tname, _idx, arity = self.ctors[cname]
-            binders = tuple(self.expect("IDENT").value for _ in range(arity))
+            binders = tuple(self.expect("IDENT").text for _ in range(arity))
             out.append((cname, binders, self.expr()))
             if self.peek().kind == "SEMI":
                 self.next()

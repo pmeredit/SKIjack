@@ -478,7 +478,7 @@ def names_generation_adds(program: A.Program):
     obj = find_object_type(program)
     if obj is None:
         return set(), {}
-    taken = set()
+    taken: Set[str] = set()
     for d in program.decls:
         if isinstance(d, A.TypeDecl):
             taken.update(c.name for c in d.ctors)
@@ -526,7 +526,7 @@ def generate(program: A.Program) -> A.Program:
             decls.append(_fill_core(d, obj, lt))
         else:
             decls.append(d)
-    return A.Program(tuple(decls + extra))
+    return A.Program(tuple([*decls, *extra]))
 
 
 def _fill_core(core: A.Core, obj: ObjectType, lt: LoopTypes) -> A.Core:

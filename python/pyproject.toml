@@ -31,6 +31,7 @@ dependencies = ["aviary-kernel>=0.1.0"]
 
 [project.optional-dependencies]
 test = ["pytest>=7"]
+types = ["mypy>=1.8"]
 
 [project.urls]
 Homepage = "https://github.com/sigilante/SKIjack"
@@ -57,3 +58,10 @@ pythonpath = ["tests"]
 markers = [
   "slow: a tower-scale run (the paper's T2, ~500,000 host contractions)",
 ]
+
+[tool.mypy]
+files = ["skijack"]
+python_version = "3.10"
+# aviary-kernel ships no py.typed marker; its types are opaque
+ignore_missing_imports = true
+warn_unused_ignores = true

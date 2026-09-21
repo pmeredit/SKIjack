@@ -63,7 +63,7 @@ def fast_reduce(term, env, *, whnf_only=True, max_steps=10 ** 6,
     bounds the run.
     """
     steps = 0
-    stack = []
+    stack: List[_Frame] = []
 
     def full_term(head, args):
         result = _apply(head, *args)

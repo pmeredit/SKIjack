@@ -156,8 +156,8 @@ def _run(args) -> int:
     print(f"  {len(exp.terms)} compiled terms, "
           f"{len(exp.level1)} level-1 declaration(s)")
     for name in sorted(exp.level1):
-        p = exp.level1[name]
-        print(f"    {name} = {p.interp} @ {p.fuel}")
+        lp = exp.level1[name]
+        print(f"    {name} = {lp.interp} @ {lp.fuel}")
     return 0
 
 

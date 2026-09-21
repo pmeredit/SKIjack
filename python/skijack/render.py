@@ -16,7 +16,7 @@ and a Tier 1 name's glyph (``⇄`` for ``C``), both stated in
 
 from __future__ import annotations
 
-from typing import List
+from typing import Dict, List
 
 from . import ast as A
 from .lexicon import GLYPH_NAMES, TOKEN_TABLE
@@ -27,7 +27,7 @@ _SUB = {str(i): chr(0x2080 + i) for i in range(10)}
 
 
 def _spellings(lexicon: str):
-    out = {}
+    out: Dict[str, str] = {}
     for r in TOKEN_TABLE:
         if not r.structural:
             continue

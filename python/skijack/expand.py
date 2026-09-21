@@ -669,7 +669,7 @@ def expand_program(program: A.Program, env: Optional[Environment] = None,
         used.add(equation_backend[(core, name)])
 
     # an interpreter core's own name denotes its fuel loop
-    for cname, core in cores.items():
+    for cname in cores:
         if (cname, "loop") in equation_backend and cname not in backend:
             backend[cname] = equation_backend[(cname, "loop")]
 
@@ -747,7 +747,7 @@ def expand_program(program: A.Program, env: Optional[Environment] = None,
 
     for key, equation in lowered.items():
         core, name = key
-        bname = backend[name] if core is None else equation_backend[key]
+        bname = backend[name] if core is None else equation_backend[(core, name)]
         gen = cg.with_resolver(resolver(core))
         recursive = key in _dep_keys(key)
         if recursive:
@@ -916,27 +916,28 @@ def expand_program(program: A.Program, env: Optional[Environment] = None,
 
         # 6a: every datum and resolver, in declaration order, each
         # defined in the environment so later declarations can name it
-        packaged: List[Tuple[A.Def, Term]] = []
+        packaged: List[Tuple[A.Def, A.Quote, Term]] = []
         for d in qdefs:
             if isinstance(d.expr, A.NsLit):
                 _compile_nslit(d, out, lt, quote_expr, path_expr, env,
                                backend[d.name])
                 continue
-            q: A.Quote = d.expr
+            if not isinstance(d.expr, A.Quote):
+                raise ExpandError(f"{d.name!r}: expected a quotation")
+            q = d.expr
             datum = quote_expr(q.expr, d.name)
             if q.fuel is None and q.interp is None:
                 out.terms[d.name] = datum           # a datum, not run
                 out.sizes[d.name] = size(datum)
                 env.define_alias(backend[d.name], datum)
                 continue
-            packaged.append((d, datum))
+            packaged.append((d, q, datum))
 
         # 6b: a level-0 equation may name one of those datums, so expand again
         expand_all()
 
         # 6c: package the level-1 executables
-        for d, datum in packaged:
-            q = d.expr
+        for d, q, datum in packaged:
             iname, iargs = _interp_spine(q.interp, cores, d.name)
             if (iname, "loop") not in lowered:
                 raise ExpandError(
@@ -980,7 +981,10 @@ def _compile_nslit(d: A.Def, out: "Expansion", lt, quote_expr, path_expr,
             f"{d.name!r}: a namespace literal compares paths with 'EQ5', "
             f"which this program does not define")
     facts: List[Tuple[Term, Term]] = []
-    for path, value in d.expr.facts:
+    lit = d.expr
+    if not isinstance(lit, A.NsLit):
+        raise ExpandError(f"{d.name!r}: expected a namespace literal")
+    for path, value in lit.facts:
         if not (isinstance(value, A.Quote) and value.fuel is None
                 and value.interp is None):
             raise ExpandError(

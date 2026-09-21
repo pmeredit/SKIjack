@@ -345,7 +345,7 @@ def run_with_namespace(exp: Expansion, prog: Level1Program, resolution,
             f"result type {prog.result_type.name!r} has no blocking "
             f"constructor, so this interpreter cannot block")
     timeout = timeout_constructor(prog.result_type)
-    namespace = []          # append-only list of (key datum, answer datum)
+    namespace: List[Tuple[Term, Term]] = []   # append-only list of (key datum, answer datum)
     known = set()
     trace = []
     steps = 0

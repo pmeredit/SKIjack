@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 __all__ = [
     "Row", "TOKEN_TABLE", "Token", "LexError",
@@ -208,9 +208,23 @@ check_table()
 @dataclass(frozen=True)
 class Token:
     kind: str
-    value: object
+    value: Union[str, int, None]
     line: int
     col: int
+
+    @property
+    def text(self) -> str:
+        """The value of a token that carries a name or spelling."""
+        if not isinstance(self.value, str):
+            raise TypeError(f"{self.kind} token at {self.line}:{self.col} carries no text")
+        return self.value
+
+    @property
+    def number(self) -> int:
+        """The value of a NUMBER or AXIS token."""
+        if isinstance(self.value, bool) or not isinstance(self.value, int):
+            raise TypeError(f"{self.kind} token at {self.line}:{self.col} carries no number")
+        return self.value
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
         return f"{self.kind}({self.value!r})@{self.line}:{self.col}"
@@ -273,7 +287,7 @@ def lex(text: str, lexicon: str) -> List[Token]:
         m = fuel_re.match(text, i)
         if m:
             digits, policy = m.group(1), m.group(2)
-            value = "policy" if policy else int(_desub(digits))
+            value: Union[str, int] = "policy" if policy else int(_desub(digits))
             out.append(Token("FUEL", value, line, col))
             i = m.end()
             continue

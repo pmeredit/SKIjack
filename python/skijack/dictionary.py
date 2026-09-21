@@ -40,7 +40,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 from aviary_kernel.abstraction import expand as _ski_expand
 from aviary_kernel.terms import App, Atom, Term, size
@@ -81,7 +81,7 @@ def canonical(term: Term) -> str:
     """The fully parenthesized printed form.  Iterative: a level-2 datum
     is deeper than the Python stack."""
     out: List[str] = []
-    work: List[object] = [term]
+    work: List[Union[str, Term]] = [term]
     while work:
         x = work.pop()
         if isinstance(x, str):

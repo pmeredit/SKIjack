@@ -48,8 +48,9 @@ from typing import Dict, List, Optional, Sequence, Set, Tuple
 from .abi import ISA as _ISA, TIER1_NAMES
 
 from . import ast as A
-from .generate import (GenerateError, find_object_type, find_path_type,
-                       is_interpreter_core, names_generation_adds)
+from .generate import (GenerateError, ObjectType, PathType, find_object_type,
+                       find_path_type, is_interpreter_core,
+                       names_generation_adds)
 
 __all__ = [
     "CheckError", "ArityError", "CaseError", "DataError", "InterfaceError",
@@ -109,7 +110,7 @@ class Site:
     def __str__(self) -> str:
         if self.core is not None:
             return f"core {self.core}, equation {self.name}"
-        return f"{self.kind} {self.name}"
+        return f"{self.kind} {self.name}" if self.name else self.kind
 
 
 @dataclass
@@ -135,8 +136,8 @@ class _Env:
     defs: Dict[str, A.Def] = field(default_factory=dict)
     generated: Set[str] = field(default_factory=set)
     core_generated: Dict[str, Set[str]] = field(default_factory=dict)
-    obj: Optional[object] = None
-    path: Optional[object] = None
+    obj: Optional[ObjectType] = None
+    path: Optional[PathType] = None
     prelude: Tuple[str, ...] = ()
 
     def known(self, name: str, core: Optional[str]) -> bool:
@@ -172,7 +173,7 @@ class _Checker:
 
     # ------------------------------------------------------------ collect
 
-    def add(self, kind, where, message):
+    def add(self, kind: type, where: Site, message: str) -> None:
         self.problems.append(Problem(kind, where, message))
 
     def _collect(self) -> None:
@@ -221,7 +222,7 @@ class _Checker:
             e.generated = set(top)
             e.core_generated = {k: set(v) for k, v in per_core.items()}
         except GenerateError as ex:
-            self.add(InterfaceError, "the program", str(ex))
+            self.add(InterfaceError, Site("the program", ""), str(ex))
 
     # ------------------------------------------------------------- walk
 
@@ -230,7 +231,7 @@ class _Checker:
             if isinstance(d, A.Equation):
                 self.expr(d.body, Site("equation", d.name), None, set(d.binders))
             elif isinstance(d, A.Macro):
-                self.expr(d.body, f"macro {d.name}", None, set(d.params),
+                self.expr(d.body, Site("macro", d.name), None, set(d.params),
                           macro=True)
             elif isinstance(d, A.Core):
                 self.core(d)
@@ -267,7 +268,7 @@ class _Checker:
 
     # ---------------------------------------------------- expressions
 
-    def expr(self, e: A.Expr, where: str, core: Optional[str],
+    def expr(self, e: A.Expr, where: Site, core: Optional[str],
              bound: Set[str], macro: bool = False) -> None:
         if isinstance(e, A.Name):
             self.name(e.name, where, core, bound, macro)
@@ -308,7 +309,7 @@ class _Checker:
                      "right of a definition")
             return
 
-    def name(self, nm: str, where: str, core: Optional[str], bound: Set[str],
+    def name(self, nm: str, where: Site, core: Optional[str], bound: Set[str],
              macro: bool) -> None:
         if nm in bound or macro:
             return
@@ -325,7 +326,7 @@ class _Checker:
         # being refused (SURFACE-LANGUAGE-DESIGN.md §6b).  The level-1
         # half of the check is in `quoted` below.
 
-    def case(self, e: A.Case, where: str, core, bound, macro) -> None:
+    def case(self, e: A.Case, where: Site, core, bound, macro) -> None:
         self.expr(e.scrutinee, where, core, bound, macro)
         if not e.branches:
             self.add(CaseError, where, "a case form needs at least one branch")
@@ -363,7 +364,7 @@ class _Checker:
 
     # --------------------------------------------------- §5, position by position
 
-    def eq_position(self, head, args, where, core, bound) -> None:
+    def eq_position(self, head, args, where: Site, core, bound) -> None:
         """(c) the arguments of ``EQ`` must not be provably functions."""
         if not (isinstance(head, A.Name) and head.name == "EQ"):
             return
@@ -412,12 +413,12 @@ class _Checker:
 
     # -------------------------------------------------------- quotation
 
-    def quote(self, q: A.Quote, where: str) -> None:
+    def quote(self, q: A.Quote, where: Site) -> None:
         if q.interp is not None:
             self.interp_application(q.interp, where)
         self.quoted(q.expr, where)
 
-    def quoted(self, e: A.Expr, where: str) -> None:
+    def quoted(self, e: A.Expr, where: Site) -> None:
         """Inside ``< >``: §6b's level-1 table.  A name is a constructor
         of the object type, or a level-0 name that is inlined and
         quoted; anything else names neither table."""
@@ -484,7 +485,7 @@ class _Checker:
                  + (f" {obj.name!r}" if obj is not None else "")
                  + " and not a level-0 name")
 
-    def path_literal(self, path: A.Path, where: str) -> None:
+    def path_literal(self, path: A.Path, where: Site) -> None:
         pt = self.env.path
         if pt is None:
             self.add(ScopeError, where,
@@ -511,7 +512,7 @@ class _Checker:
 
     # ----------------------------------------------- the §6c interface
 
-    def interp_application(self, interp: A.Expr, where: str) -> None:
+    def interp_application(self, interp: A.Expr, where: Site) -> None:
         head, args = _spine(interp)
         if not isinstance(head, A.Name):
             self.add(InterfaceError, where,
@@ -531,6 +532,8 @@ class _Checker:
 
     def interface(self, d: A.Core) -> None:
         obj = self.env.obj
+        if obj is None:                  # only called when an object type exists
+            return
         where = Site("core", d.name)
         leaves = [c.name for c in obj.leaves]
         for equation in d.equations:
@@ -564,7 +567,7 @@ class _Checker:
                      f"parameters; this one has "
                      f"{len(written['loop1'].binders)}")
 
-    def step_arm(self, equation: A.Equation, d: A.Core, leaves, where) -> None:
+    def step_arm(self, equation: A.Equation, d: A.Core, leaves, where: Site) -> None:
         if len(equation.binders) != 1:
             self.add(InterfaceError, where,
                      f"a written 'step' takes the term, one binder after the "
@@ -579,16 +582,18 @@ class _Checker:
                      f"but the object type has {len(leaves)} leaves "
                      f"({', '.join(leaves)})")
             return
-        got = []
+        got: List[Optional[str]] = []
         for x in args[2:]:
             h, _ = _spine(x)
             got.append(h.name if isinstance(h, A.Name) else None)
         want = ["step" + c for c in leaves]
-        if all(g is not None and g.startswith("step") for g in got) \
-                and sorted(got) == sorted(want) and got != want:
+        named = [g for g in got if g is not None]
+        if len(named) == len(got) \
+                and all(g.startswith("step") for g in named) \
+                and sorted(named) == sorted(want) and named != want:
             self.add(InterfaceError, where,
                      f"'step' installs the leaf equations in the order "
-                     f"{', '.join(got)}, but the object type declares "
+                     f"{', '.join(named)}, but the object type declares "
                      f"{', '.join(leaves)}; declaration order is the ABI and "
                      f"a wrong order is silent wrong semantics "
                      f"(DESIDERATA.md item 11)")
