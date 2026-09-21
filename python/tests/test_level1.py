@@ -195,3 +195,33 @@ def test_the_timeout_constructor_is_the_last_terminal_not_the_last_ctor(built):
     assert timeout_constructor(flipa.level1["answer"].result_type) == "Nothing"
     t3 = built[("t3", "ascii")]
     assert timeout_constructor(t3.level1["answer"].result_type) == "RTime"
+
+
+# ------------------------------- the paper's reify/eval boundary (S12)
+
+def test_a_level0_name_may_be_quoted_but_a_parameter_may_not():
+    """The Limitations section's worked example.
+
+    `<k2>` and `<I K>` compile because the compiler knows before
+    anything runs which term the quotation contains.  `<x>` does not,
+    because `x` is bound while something runs -- and the datum it asks
+    for is exactly the one `<k2>` already emits.  The line is *when* the
+    term is known, not what it is.
+    """
+    import skijack
+    from skijack import corpus
+    from skijack.errors import SkijackError
+
+    base = corpus.read("interp-whnff")
+    named = skijack.compile(base + "k2 = K K\nq := whnfF |- <k2>@10\n")
+    assert named.sizes["k2"] == 2
+    assert named.sizes["q"] == 741
+
+    written = skijack.compile(base + "q2 := whnfF |- <I K>@10\n")
+    assert written.sizes["q2"] == 739
+
+    with pytest.raises(SkijackError) as excinfo:
+        skijack.compile(base + "f x = <x>\ng := f I\n")
+    msg = " ".join(str(excinfo.value).split())
+    assert "names neither table" in msg
+    assert "not a level-0 name" in msg
