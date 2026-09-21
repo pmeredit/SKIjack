@@ -35,8 +35,8 @@ each carries a status header saying so. The compiler is implemented; the runtime
     pip install -e "python[test]"
     python -m pytest python/tests
 
-The full suite (738 tests) needs the reference artifact for its oracle checks: clone
-`artifact-metacircular-ski` and set `SKIJACK_ARTIFACT_DIR` to it. Without it, 203 oracle
-tests skip and the suite refuses to run silently reduced unless `SKIJACK_ALLOW_SKIP=1` is set.
-CI runs the full suite on Python 3.10–3.13 against a checkout of the artifact.
+The suite is self-contained: the four oracle scripts from
+`artifact-metacircular-ski` are vendored under `python/tests/artifact/` (provenance in the
+README there), so all 738 tests run with no setup. To check against a live checkout of the
+artifact instead, set `SKIJACK_ARTIFACT_DIR` to it. CI runs the suite on Python 3.10–3.13.
 

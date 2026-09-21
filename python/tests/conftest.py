@@ -44,7 +44,7 @@ def corpus():
 #: ``pytest_sessionstart`` below.
 ARTIFACT_DIR = pathlib.Path(
     os.environ.get("SKIJACK_ARTIFACT_DIR",
-                   pathlib.Path(__file__).resolve().parents[2] / "artifact")).expanduser()
+                   pathlib.Path(__file__).resolve().parent / "artifact")).expanduser()
 ARTIFACT = ARTIFACT_DIR / "tower_harness.py"
 
 
@@ -64,8 +64,8 @@ def pytest_sessionstart(session):
         f"the hand-built artifact of the companion paper; without it "
         f"those tests skip and the remainder checks the compiler only "
         f"against itself.\n"
-        f"Clone https://github.com/sigilante/artifact-metacircular-ski to\n"
-        f"{ARTIFACT_DIR} or set SKIJACK_ARTIFACT_DIR to a checkout of it, or "
+        f"A copy is vendored at tests/artifact; unset SKIJACK_ARTIFACT_DIR to use\n"
+        f"it, or point it at a checkout of artifact-metacircular-ski, or "
         f"SKIJACK_ALLOW_SKIP=1 to run the reduced suite deliberately.")
 
 
