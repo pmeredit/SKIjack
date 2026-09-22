@@ -262,3 +262,52 @@ This repository holds the language (`SURFACE-LANGUAGE-DESIGN.md`) and
 the runtime (this note). The dependency runs one way: the runtime must
 reproduce the artifact's counts, and the language compiles to the
 artifact's ABI; nothing in the paper depends on either.
+
+## 8. Notes: jet candidates
+
+The point of this section is to flag supercombinator patterns that will
+merit jetting, and to do it from a census rather than by eye.
+`avon/bench/jets.py` keys every subterm of the compiled corpus by
+structural hash (section 5's key: the subterm and nothing else), counts
+tree occurrences with multiplicities propagated through sharing, and
+ranks by occurrences times atoms. Run on the 17 compilable corpus
+programs, 2026-09-22:
+
+```
+occurrences atoms progs  name       structure
+      2,809    39     7  App        S (K (S (K K))) (S (K (S (K K))) (S (K (S (K K))) (S (K 
+      2,809    34     7  -          S (K (S (K K))) (S (K (S (K K))) (S (K (S (K (S (K K))))
+     18,186     5    17  -          S (K (S (K K)))
+      2,809    29     7  -          S (K (S (K K))) (S (K (S (K (S (K K))))) (S (S (K S) (S 
+         73  1052     3  -          S (K (S (K K))) (S (K (S (K K))) (S (K (S (K K))) (S (K 
+         73  1013     3  -          S (K (S (K K))) (S (K (S (K K))) (S (K (S (K K))) (S (K 
+      4,272    17    17  pair       S (S (K S) (S (K K) (S (K S) (S (K (S I)) K)))) (K K)
+      2,809    24     7  -          S (K (S (K (S (K K))))) (S (S (K S) (S (K K) (S (K S) (S
+      4,272    15    17  -          S (S (K S) (S (K K) (S (K S) (S (K (S I)) K))))
+      4,272    14    17  -          S (K S) (S (K K) (S (K S) (S (K (S I)) K)))
+         73   774     3  -          S (K (S (K K))) (S (K (S (K K))) (S (K (S (K K))) (S (K 
+         73   719     3  -          S (K (S (K K))) (S (K (S (K K))) (S (K (S (K K))) (S (K 
+         73   680     3  -          S (K (S (K K))) (S (K (S (K K))) (S (K (S (K K))) (S (K 
+      4,272    11    17  -          S (K K) (S (K S) (S (K (S I)) K))
+
+10,296 distinct structures; among the top 40, 7 are named supercombinators.
+```
+
+Reading it: by frequency the object type's `App` constructor and the
+`pair` cell dominate, together with their sub-spines (the unnamed rows
+with the same counts are prefixes of those two selector chains, and are
+covered the moment the parent is jetted); by size, `step`, `loop1` and
+the generated 128-way selectors of `ascii-digits`. The 5-atom
+`S (K (S (K K)))` at 18,186 occurrences and the 8-atom
+`S (K S) (S (K (S I)) K)` at 4,851 are not supercombinators at all but
+the abstraction algorithm's weakening chains -- the BCKW census's
+finding seen from the other side -- which is the case for Turner's
+extended set (B, C, S', B', C') at the runtime rather than a jet per
+chain. Only 7 of the top 40 structures are named; jets should key on the
+named ones and let the sub-spines fall out.
+
+* Avon:  jet $S(S(S(SS)S(S(SSS)S)))S$ -- **as written this diverges**:
+  `S (S S) S (S (S S S) S)` is a saturated `S`, and the term grows 12 →
+  37 → 398 → 7,492 atoms in 5, 20 and 60 steps with no normal form, so
+  there is nothing for a jet to compute. Kept pending clarification of
+  what it was meant to denote.
