@@ -134,7 +134,11 @@ settles who supplies `<subject>`: the runtime, at boot.
 
 A **kernel** is a core with a declared interface the runtime pulls by
 name, Arvo's shape at small scale:
-- `poke`: event → new kernel and a list of effects;
+- `poke`: event → new kernel and a list of effects. (A core cannot name
+  itself in its own equations, so as written today `poke` returns the
+  new *state* and the runtime re-applies `poke` to it; the worked form is
+  `python/skijack/corpus/kernel-events.ascii.ski`, and the loop that pokes
+  it is `tests/test_examples.py`.)
 - `peek`: path → answer, which is the scry namespace of `SYNTAX.md` §6,
   served to level-1 programs that `∵`.
 

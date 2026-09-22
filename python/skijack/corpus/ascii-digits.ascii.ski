@@ -1,0 +1,25 @@
+-- Full ASCII as a Scott type: constructor Cn is codepoint n, so a
+-- character is a datum and dispatch on it is one case.  (As a
+-- namespace the same table is unusable: a 26-fact literal is 216,673
+-- atoms and its last lookup costs a million contractions.)  This file
+-- is written out in full; EXAMPLES.md shows it elided.
+nat === Zero | Suc nat
+ascii === C0 | C1 | C2 | C3 | C4 | C5 | C6 | C7 | C8 | C9 | C10 | C11 | C12 | C13 | C14 | C15 | C16 | C17 | C18 | C19 | C20 | C21 | C22 | C23 | C24 | C25 | C26 | C27 | C28 | C29 | C30 | C31 | C32 | C33 | C34 | C35 | C36 | C37 | C38 | C39 | C40 | C41 | C42 | C43 | C44 | C45 | C46 | C47 | C48 | C49 | C50 | C51 | C52 | C53 | C54 | C55 | C56 | C57 | C58 | C59 | C60 | C61 | C62 | C63 | C64 | C65 | C66 | C67 | C68 | C69 | C70 | C71 | C72 | C73 | C74 | C75 | C76 | C77 | C78 | C79 | C80 | C81 | C82 | C83 | C84 | C85 | C86 | C87 | C88 | C89 | C90 | C91 | C92 | C93 | C94 | C95 | C96 | C97 | C98 | C99 | C100 | C101 | C102 | C103 | C104 | C105 | C106 | C107 | C108 | C109 | C110 | C111 | C112 | C113 | C114 | C115 | C116 | C117 | C118 | C119 | C120 | C121 | C122 | C123 | C124 | C125 | C126 | C127
+chars === Nil | Cons ascii chars
+
+-- booleans are K for yes and K I for no (the ABI)
+isDigit c = c |> { C0 (K I); C1 (K I); C2 (K I); C3 (K I); C4 (K I); C5 (K I); C6 (K I); C7 (K I); C8 (K I); C9 (K I); C10 (K I); C11 (K I); C12 (K I); C13 (K I); C14 (K I); C15 (K I); C16 (K I); C17 (K I); C18 (K I); C19 (K I); C20 (K I); C21 (K I); C22 (K I); C23 (K I); C24 (K I); C25 (K I); C26 (K I); C27 (K I); C28 (K I); C29 (K I); C30 (K I); C31 (K I); C32 (K I); C33 (K I); C34 (K I); C35 (K I); C36 (K I); C37 (K I); C38 (K I); C39 (K I); C40 (K I); C41 (K I); C42 (K I); C43 (K I); C44 (K I); C45 (K I); C46 (K I); C47 (K I); C48 K; C49 K; C50 K; C51 K; C52 K; C53 K; C54 K; C55 K; C56 K; C57 K; C58 (K I); C59 (K I); C60 (K I); C61 (K I); C62 (K I); C63 (K I); C64 (K I); C65 (K I); C66 (K I); C67 (K I); C68 (K I); C69 (K I); C70 (K I); C71 (K I); C72 (K I); C73 (K I); C74 (K I); C75 (K I); C76 (K I); C77 (K I); C78 (K I); C79 (K I); C80 (K I); C81 (K I); C82 (K I); C83 (K I); C84 (K I); C85 (K I); C86 (K I); C87 (K I); C88 (K I); C89 (K I); C90 (K I); C91 (K I); C92 (K I); C93 (K I); C94 (K I); C95 (K I); C96 (K I); C97 (K I); C98 (K I); C99 (K I); C100 (K I); C101 (K I); C102 (K I); C103 (K I); C104 (K I); C105 (K I); C106 (K I); C107 (K I); C108 (K I); C109 (K I); C110 (K I); C111 (K I); C112 (K I); C113 (K I); C114 (K I); C115 (K I); C116 (K I); C117 (K I); C118 (K I); C119 (K I); C120 (K I); C121 (K I); C122 (K I); C123 (K I); C124 (K I); C125 (K I); C126 (K I); C127 (K I) }
+digitValue c = c |> { C0 Zero; C1 Zero; C2 Zero; C3 Zero; C4 Zero; C5 Zero; C6 Zero; C7 Zero; C8 Zero; C9 Zero; C10 Zero; C11 Zero; C12 Zero; C13 Zero; C14 Zero; C15 Zero; C16 Zero; C17 Zero; C18 Zero; C19 Zero; C20 Zero; C21 Zero; C22 Zero; C23 Zero; C24 Zero; C25 Zero; C26 Zero; C27 Zero; C28 Zero; C29 Zero; C30 Zero; C31 Zero; C32 Zero; C33 Zero; C34 Zero; C35 Zero; C36 Zero; C37 Zero; C38 Zero; C39 Zero; C40 Zero; C41 Zero; C42 Zero; C43 Zero; C44 Zero; C45 Zero; C46 Zero; C47 Zero; C48 Zero; C49 (Suc Zero); C50 (Suc (Suc Zero)); C51 (Suc (Suc (Suc Zero))); C52 (Suc (Suc (Suc (Suc Zero)))); C53 (Suc (Suc (Suc (Suc (Suc Zero))))); C54 (Suc (Suc (Suc (Suc (Suc (Suc Zero)))))); C55 (Suc (Suc (Suc (Suc (Suc (Suc (Suc Zero))))))); C56 (Suc (Suc (Suc (Suc (Suc (Suc (Suc (Suc Zero)))))))); C57 (Suc (Suc (Suc (Suc (Suc (Suc (Suc (Suc (Suc Zero))))))))); C58 Zero; C59 Zero; C60 Zero; C61 Zero; C62 Zero; C63 Zero; C64 Zero; C65 Zero; C66 Zero; C67 Zero; C68 Zero; C69 Zero; C70 Zero; C71 Zero; C72 Zero; C73 Zero; C74 Zero; C75 Zero; C76 Zero; C77 Zero; C78 Zero; C79 Zero; C80 Zero; C81 Zero; C82 Zero; C83 Zero; C84 Zero; C85 Zero; C86 Zero; C87 Zero; C88 Zero; C89 Zero; C90 Zero; C91 Zero; C92 Zero; C93 Zero; C94 Zero; C95 Zero; C96 Zero; C97 Zero; C98 Zero; C99 Zero; C100 Zero; C101 Zero; C102 Zero; C103 Zero; C104 Zero; C105 Zero; C106 Zero; C107 Zero; C108 Zero; C109 Zero; C110 Zero; C111 Zero; C112 Zero; C113 Zero; C114 Zero; C115 Zero; C116 Zero; C117 Zero; C118 Zero; C119 Zero; C120 Zero; C121 Zero; C122 Zero; C123 Zero; C124 Zero; C125 Zero; C126 Zero; C127 Zero }
+
+ten = (Suc (Suc (Suc (Suc (Suc (Suc (Suc (Suc (Suc (Suc Zero))))))))))
+add m n = n |> { Zero m; Suc k (Suc (add m k)) }
+mul m n = n |> { Zero Zero; Suc k (add m (mul m k)) }
+
+-- the tokenization half of a parser: fold the digits, most significant first
+go acc ds = ds |> { Nil acc; Cons d rest (go (add (mul acc ten) (digitValue d)) rest) }
+parseDigits ds = go Zero ds
+
+twelve   := parseDigits (Cons C49 (Cons C50 Nil))
+fortyTwo := parseDigits (Cons C52 (Cons C50 Nil))
+yes := isDigit C55
+no  := isDigit C65

@@ -10,7 +10,7 @@ A supercombinator language over the $SKI$ combinatory logic and a graph-reductio
 - `DESIDERATA.md`: what the language must be, stated as twelve properties borrowed from nockasm's discipline, and the four tiers of exposure (primitives, combinators, supercombinators, macros).
 - `SYNTAX.md`: the surface direction: equations, cores, glyph-named combinators, two brackets, one grammar with two lexicons (ASCII and Unicode) related by a bijective token table, and the scry namespace discipline.
 - `SURFACE-LANGUAGE-DESIGN.md`: the kernel forms, the representation ABI (Scott pairs as cells, Nock axes over data, cores tied with `Y`), the compile rules, compile-time name resolution with no runtime environment, the standard library the runtime supplies at boot, and the quotation line that a theorem fixes.
-- `EXAMPLES.md`: numerals (increment, decrement, addition, subtraction), a combinator three ways, a macro over pairs at level 0 and level 1, a user interpreter, and a value lookup, in both spellings, with the codegen and the checks that were actually run.
+- `EXAMPLES.md`: numerals (increment, decrement, addition, subtraction), a combinator three ways, a macro over pairs at level 0 and level 1, a user interpreter, a value lookup, words to numbers both as a case and as a namespace, full ASCII as a type with a digit parser, and an event type with a kernel the runtime pokes — in both spellings, with the codegen and the checks that were actually run.
 - `RUNTIME-DESIGN.md`: why a Turner-style reducer with jets is required, what it must reproduce, and what it must not do.
 - `avon/DESIGN.md`: the build plan for the C runtime — the measurement that fixes its acceptance test (sharing changes the paper's counts and not its values, so Avon carries two strategies), the node and arena representation, jets as loader-installed wrappers rather than runtime hashing, the conformance harness, and eight stages with what each one has to prove. `avon/bench/strategies.py` reproduces the measurement.
 
@@ -37,6 +37,6 @@ each carries a status header saying so. The compiler is implemented; the runtime
 
 The suite is self-contained: the four oracle scripts from
 `artifact-metacircular-ski` are vendored under `python/tests/artifact/` (provenance in the
-README there), so all 738 tests run with no setup. To check against a live checkout of the
+README there), so all 789 tests run with no setup. To check against a live checkout of the
 artifact instead, set `SKIJACK_ARTIFACT_DIR` to it. CI runs the suite on Python 3.10–3.13.
 

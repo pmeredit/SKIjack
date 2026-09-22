@@ -284,3 +284,163 @@ from surface source. Section 5 describes the paper's verified
 mechanism in the surface's notation and has not been compiled from that
 notation; resolver-taking interpreters and the namespace literal are
 the next step, after which section 5 becomes a measured statement.
+Sections 8 to 10 below were measured in full; their numbers are pinned by
+`python/tests/test_examples.py`.
+
+
+## 8. Words to numbers, two ways
+
+Unicode:
+```
+nat ≡ Zero | Suc nat
+word ≡ One | Two | Three
+
+toNum w = w ▹ { One (Suc Zero); Two (Suc (Suc Zero)); Three (Suc (Suc (Suc Zero))) }
+three ≔ toNum Three
+
+... the wfN interpreter and EQ5 of section 5, unchanged ...
+nums ≔ ns{/one ↦ <Suc Zero>, /two ↦ <Suc (Suc Zero)>, /three ↦ <Suc (Suc (Suc Zero))>}
+n3 ≔ wfN nums ⊢ <∵/three>₁₀
+```
+
+ASCII:
+```
+nat === Zero | Suc nat
+word === One | Two | Three
+
+toNum w = w |> { One (Suc Zero); Two (Suc (Suc Zero)); Three (Suc (Suc (Suc Zero))) }
+three := toNum Three
+
+... the wfN interpreter and EQ5 of section 5, unchanged ...
+nums := ns{/one => <Suc Zero>, /two => <Suc (Suc Zero)>, /three => <Suc (Suc (Suc Zero))>}
+n3 := wfN nums |- <?^/three>@10
+```
+
+One declaration serves both levels: `word` is the type the case
+dispatches on and the segment type the paths are made of. Constructor
+names are global, so it could not have been two types.
+
+At level 0, `toNum` is a case on the constructor and compiles to 58 atoms;
+`three` is 61 atoms and reaches its numeral in 10 contractions, read back
+behaviourally as 3. At level 1 the same three facts as a namespace literal
+are 6,691 atoms, the run `n3` is 9,081, and fetching `three` takes 22,280
+contractions -- and what comes back is the *encoding* of `Suc (Suc (Suc
+Zero))`, `K (S (K (S I)) K ...)`, not a numeral the program can add to.
+Same mapping, two orders of magnitude apart. A namespace literal is an
+association list: the cheap thing is the declaration, not the lookup.
+
+## 9. Full ASCII as a type, and a digit parser
+
+Unicode:
+```
+nat ≡ Zero | Suc nat
+ascii ≡ C0 | C1 | ... | C127          ⍝ 128 constructors, Cn is codepoint n
+chars ≡ Nil | Cons ascii chars
+
+isDigit c = c ▹ { C0 (K I); ...; C48 K; ...; C57 K; ...; C127 (K I) }
+digitValue c = c ▹ { C0 Zero; ...; C48 Zero; C49 (Suc Zero); ...; C57 (...); ...; C127 Zero }
+
+ten = (Suc (Suc (Suc (Suc (Suc (Suc (Suc (Suc (Suc (Suc Zero))))))))))
+add m n = n ▹ { Zero m; Suc k (Suc (add m k)) }
+mul m n = n ▹ { Zero Zero; Suc k (add m (mul m k)) }
+
+go acc ds = ds ▹ { Nil acc; Cons d rest (go (add (mul acc ten) (digitValue d)) rest) }
+parseDigits ds = go Zero ds
+
+twelve   ≔ parseDigits (Cons C49 (Cons C50 Nil))
+fortyTwo ≔ parseDigits (Cons C52 (Cons C50 Nil))
+yes ≔ isDigit C55
+no  ≔ isDigit C65
+```
+
+ASCII:
+```
+nat === Zero | Suc nat
+ascii === C0 | C1 | ... | C127          -- 128 constructors, Cn is codepoint n
+chars === Nil | Cons ascii chars
+
+isDigit c = c |> { C0 (K I); ...; C48 K; ...; C57 K; ...; C127 (K I) }
+digitValue c = c |> { C0 Zero; ...; C48 Zero; C49 (Suc Zero); ...; C57 (...); ...; C127 Zero }
+
+ten = (Suc (Suc (Suc (Suc (Suc (Suc (Suc (Suc (Suc (Suc Zero))))))))))
+add m n = n |> { Zero m; Suc k (Suc (add m k)) }
+mul m n = n |> { Zero Zero; Suc k (add m (mul m k)) }
+
+go acc ds = ds |> { Nil acc; Cons d rest (go (add (mul acc ten) (digitValue d)) rest) }
+parseDigits ds = go Zero ds
+
+twelve   := parseDigits (Cons C49 (Cons C50 Nil))
+fortyTwo := parseDigits (Cons C52 (Cons C50 Nil))
+yes := isDigit C55
+no  := isDigit C65
+```
+
+The corpus file writes all 128 constructors and both 128-way cases out in
+full; they are elided here.
+
+A character is a datum and dispatch on it is one case. The constructors
+cost 128 to 379 atoms each (`C127` is a chain of `K`s, `C0` the longest
+selector); `isDigit`, a 128-way case to a boolean, is 503 atoms, and
+`digitValue`, a 128-way case to a numeral, is 745. `parseDigits` folds a
+list of characters most-significant-first with its own `add` (42) and `mul`
+(77): `"12"` reads back as 12 in 592 contractions and `"42"` as 42;
+`isDigit C55` answers yes and `isDigit C65` no, read by applying the
+boolean to two marker atoms.
+
+This is the tokenization half of a parser, which the paper's character
+table (section 8.1 of the SKIjack paper) leaves unbuilt: there, a
+character resolved by lookup to the term it denotes; here, a character is
+cased on and a string of them folds to a value. The other form was
+measured so as not to be guessed at: as a namespace, a 26-fact table is
+216,673 atoms and looking up its last entry costs 1,012,197 contractions
+(82 seconds on the reference reducer). Full ASCII is a type or it is
+nothing.
+
+## 10. An event type and a kernel
+
+Unicode:
+```
+nat ≡ Zero | Suc nat
+event ≡ Tick | Poke nat
+effect ≡ Log nat
+effects ≡ Nil | Cons effect effects
+
+add m n = n ▹ { Zero m; Suc k (Suc (add m k)) }
+
+kernel st ≔ {
+  poke ev = ev ▹ { Tick [(Suc st) Nil]; Poke n [(add st n) (Cons (Log st) Nil)] }
+}
+```
+
+ASCII:
+```
+nat === Zero | Suc nat
+event === Tick | Poke nat
+effect === Log nat
+effects === Nil | Cons effect effects
+
+add m n = n |> { Zero m; Suc k (Suc (add m k)) }
+
+kernel st := {
+  poke ev = ev |> { Tick [(Suc st) Nil]; Poke n [(add st n) (Cons (Log st) Nil)] }
+}
+```
+
+`RUNTIME-DESIGN.md` section 3b names this shape: a kernel is a core the
+runtime pulls `poke` from, applies to an event, installs, and takes effects
+from -- Arvo at small scale. The loop, from the runtime's side, is in
+`tests/test_examples.py`: the runtime builds each event datum from the
+program's own compiled constructors (`Tick` is 1 atom, `Poke` 8, `Log` 5),
+applies `kernel.poke` (146 atoms) to the state and the event, reads the new
+state from the head of the returned cell and the effects from its tail.
+`Tick` from state 0 gives state 1 and no effects in 24 contractions;
+`Poke 5` from state 1 gives state 6 and `Cons (Log 1) Nil` in 35; `Tick`
+again gives 7. Nothing is reified anywhere: the runtime constructs data
+and applies, which is exactly what the boundary permits.
+
+One gap between the note and the language: the note says `poke` returns a
+*new kernel*, Arvo's closure-carries-its-state form. A core cannot name
+itself in its own equations (`kernel (Suc st)` inside `kernel` is an
+unresolved name; only an interpreter core's name denotes anything, its
+fuel loop), so `poke` returns the new state and the runtime re-applies
+`poke` to it. The observable behaviour is the same; the note now says so.

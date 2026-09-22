@@ -19,7 +19,8 @@ from conftest import ALL_SOURCES, EXPANDABLE, INTERPRETERS, source
 
 #: the corpus files the compiler handles end to end
 COMPILABLE = tuple(EXPANDABLE) + tuple(INTERPRETERS) + (
-    "level1-flipa", "tower", "scry-wfq", "scry-wfn", "scry-ns", "scry-block")
+    "level1-flipa", "tower", "scry-wfq", "scry-wfn", "scry-ns", "scry-block",
+    "parse-chars", "words-to-numbers", "ascii-digits", "kernel-events")
 
 #: the rest are parse-only: they use forms the notes describe and this
 #: package does not compile (wings, segment payloads, an undeclared

@@ -1,0 +1,18 @@
+-- An event type and a kernel, Arvo's shape at small scale
+-- (RUNTIME-DESIGN.md section 3b): the runtime builds an event datum from
+-- the program's own constructors, applies poke to the state and the
+-- event, installs the new state, and emits the effects.  Nothing is
+-- reified; the runtime constructs data and applies.
+nat === Zero | Suc nat
+event === Tick | Poke nat
+effect === Log nat
+effects === Nil | Cons effect effects
+
+add m n = n |> { Zero m; Suc k (Suc (add m k)) }
+
+-- poke: (state, event) -> [state' effects].  A core cannot name itself
+-- in its own equations, so the new kernel is the new state and the
+-- runtime re-applies poke to it.
+kernel st := {
+  poke ev = ev |> { Tick [(Suc st) Nil]; Poke n [(add st n) (Cons (Log st) Nil)] }
+}
