@@ -278,13 +278,12 @@ def run_policy(prog: Level1Program, *, start: int = 8, cap: int = DEFAULT_CAP,
 # ------------------------------------------------- the blocking driver
 
 def block_constructor(decl: A.TypeDecl, object_type: str) -> Optional[str]:
-    """The result constructor a blocked run returns: the one carrying a
-    payload that is *not* an object term -- ``RBlockN path``.  ``None``
-    when the result type has none, i.e. the interpreter cannot block."""
-    for c in decl.ctors:
-        if len(c.fields) == 1 and c.fields[0] != object_type:
-            return c.name
-    return None
+    """The result constructor a blocked run returns: the second
+    payload-carrying constructor, after the value one -- ``RBlockN term5``,
+    the encoded path that blocked.  ``None`` when the result type has no
+    second payload, i.e. the interpreter cannot block."""
+    carriers = [c for c in decl.ctors if len(c.fields) == 1]
+    return carriers[1].name if len(carriers) > 1 else None
 
 
 def make_resolver(exp: Expansion, facts) -> Term:

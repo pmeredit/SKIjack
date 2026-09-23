@@ -264,7 +264,7 @@ is the whole reason the outcome type grew.
 
 **Blocking.** `wfN` answers three ways, so its outcome and result each
 grow a fourth constructor carrying the path that blocked —
-`PendingN path` maps to `RBlockN path`, the constructor at the same
+`PendingN term5` maps to `RBlockN term5`, the constructor at the same
 position handed the same payload. `run.run_with_namespace` is
 `scry_namespace.py`'s resume loop: an append-only namespace, the program
 re-run from scratch each round, the blocked path decoded by probe and
@@ -567,7 +567,10 @@ leave the names to the combinators; and when two names share a term
 37. **Outcome-shaped now allows other constructors to carry fields.** A
     type is outcome-shaped when exactly one constructor carries a single
     field *of the object type*; the rest may be nullary or carry
-    something else, which is what lets `PendingN path` exist.
+    something else, which is what lets `PendingN` exist. (Since Stage B the
+    payload is declared as what it holds, the encoded path, so it is
+    `PendingN term5`; the carrier is the *first* single-object-field
+    constructor, and the blocking constructor the second payload one.)
 38. **The loop mapping, extended**: an outcome constructor carrying a
     payload maps to the result constructor at the **same position**,
     which must carry as many fields, and is handed the same payload

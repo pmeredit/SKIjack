@@ -150,19 +150,22 @@ class LoopTypes:
 
 
 def _carrier(d: A.TypeDecl, tname: str) -> Optional[Tuple[A.Ctor, Tuple[A.Ctor, ...]]]:
-    """(the unique ctor carrying exactly one field of type ``tname``, the
-    rest), or ``None`` if ``d`` does not have that shape.
+    """(the first ctor carrying exactly one field of type ``tname``, the
+    rest), or ``None`` if ``d`` has no such constructor.
 
-    The other constructors may be nullary *or* carry fields of some other
-    type: ``outcome ≡ SteppedN term5 | DoneN | ErrdN | PendingN path``
-    is outcome-shaped, and ``PendingN``'s payload is what makes blocking
-    expressible at all.
+    The other constructors may be nullary *or* carry fields:
+    ``outcome ≡ SteppedN term5 | DoneN | ErrdN | PendingN term5`` is
+    outcome-shaped, and ``PendingN``'s payload -- the encoded path that
+    blocked, an object term -- is what makes blocking expressible at all.
     """
     if len(d.ctors) < 2:
         return None
     carry = [c for c in d.ctors if len(c.fields) == 1 and c.fields[0] == tname]
-    if len(carry) != 1:
+    if not carry:
         return None
+    # the first is the carrier; a later one is a payload constructor, which
+    # is what a blocked path is once it is declared as what it holds -- an
+    # encoded term, i.e. the object type (Stage B refuses `PendingN path`)
     return carry[0], tuple(c for c in d.ctors if c is not carry[0])
 
 
