@@ -6,6 +6,12 @@
 
 (Pronounced "sky-jack".)
 
+**Status ~2026.9.22:  Two papers covering this work have been submitted to journals.  The
+repository is at version 0.2.0 and considered stable and usable.**
+
+* N E Davis (2027, in review) A Self-Interpreter for $SKI$: Authoring Semantics for New Symbols. *Journal of Functional Programming*.  doi:10.5281/zenodo.22867957
+* N E Davis (2027a, in review) SKIjack: A Low-Level Native Language for the $SKI$ Calculus.  *The Art, Science, and Engineering of Programming*.
+
 A supercombinator language over the $SKI$ combinatory logic and a graph-reduction runtime with jet-accelerated code to make it
 (marginally) viable.
 
@@ -21,7 +27,11 @@ A supercombinator language over the $SKI$ combinatory logic and a graph-reductio
 
 - `python/`: `skijack`, the reference implementation in Python on `aviary-kernel`: the two lexers over one token table, one parser, renderers for both lexicons, the expander through bracket abstraction, and behavioral probes; `python/README.md` records every decision taken and what its test suite proves. Its corpus under `python/skijack/corpus/` is written in both spellings and is also Avon's conformance suite: the C runtime is correct when it reproduces `skijack`'s terms and decoded values on every file there, and the reference host's contraction counts under its faithful strategy (`avon/DESIGN.md` §1).
 
-**Three words, three levels.** *Equation*: `f x y = body`, what an author writes, and the level at which sibling and scope relations live. *Supercombinator*: what an equation compiles to — closed, `Y`-tied, one node — and the unit of naming, sharing, jetting, lifting, and the census. *Core*: the group an equation is declared in. *Subject*: the single argument the runtime applies a program to at boot, and nothing else; it is an argument, not a scope, and nothing resolves into it at run time. *Axis*: addressing into a Scott-encoded data cell, never into a scope. Names resolve in a compile-time table and are gone before anything runs, which is why the subject-oriented vocabulary this repository started with does not survive contact with bracket abstraction (`DESIDERATA.md` §1, "two things do not transfer").
+Three levels: an **equation** `f x y = body` is what an author writes, a
+**supercombinator** is the closed `Y`-tied term it compiles to, and a
+**core** is the group it is declared in. The AST node is `A.Equation`,
+a core entry's backend name is `core_equation`, and Stage A reports
+`in core C, equation f`.
 
 The reference artifact and every count the papers report live in
 [`sigilante/artifact-metacircular-ski`](https://github.com/sigilante/artifact-metacircular-ski);
@@ -29,11 +39,6 @@ this repository depends on that one, never the reverse. The self-interpreter it 
 described in *A self-interpreter for SKI: Authoring semantics for new symbols*
 ([doi:10.5281/zenodo.22867957](https://doi.org/10.5281/zenodo.22867957), in review at JFP),
 and the language in the companion paper on SKIjack (in review).
-
-## Status
-
-The design notes above are dated 2026-09-16 and were written before the implementation existed;
-each carries a status header saying so. The compiler is implemented; the runtime is planned.
 
 ## Install and test
 
