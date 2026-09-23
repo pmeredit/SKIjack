@@ -1,5 +1,7 @@
 # SKIjack
 
+![](./img/hero.jpg)
+
 [![CI](https://github.com/sigilante/SKIjack/actions/workflows/ci.yml/badge.svg)](https://github.com/sigilante/SKIjack/actions/workflows/ci.yml)
 
 (Pronounced "sky-jack".)
