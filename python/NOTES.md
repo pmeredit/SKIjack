@@ -4,14 +4,15 @@ The record of what this package does, what its test suite proves, which
 questions the specification left open and how each was answered, and the
 places where the specification itself turned out to be wrong.  The
 front page is `README.md`; the specification is the design notes one
-directory up.
+directory up; the normative statement of the language, derived from the
+decisions below, is `SPEC.md` there.
 
 ## What passes
 
 `python3 -m pytest -q` from `python/`:
 
 ```
-705 passed
+789 passed
 ```
 
 * `tests/test_lexicon.py` — the token table is checked at import as a
@@ -27,7 +28,7 @@ directory up.
   trees*; application is left-associative; the two documented parsing
   decisions behave as specified, including a clear error on an
   undeclared constructor in a case branch.
-* `tests/test_roundtrip.py` — for each of the 17 corpus programs `S` in
+* `tests/test_roundtrip.py` — for each of the 21 corpus programs `S` in
   lexicon `L`: `parse_L(render_L(parse_L(S))) == parse_L(S)`;
   `parse_M(render_M(parse_L(S))) == parse_L(S)` for the other lexicon
   `M`; `render_L` is idempotent on text; and a there-and-back trip
@@ -61,6 +62,10 @@ directory up.
 * `tests/test_dictionary.py` — the hash, the table, `lower ∘ lift = id`
   on every corpus term, and lift recovering the interpreter's own names.
 * `tests/test_cli.py` — the package API and every CLI flag.
+* `tests/test_examples.py` — the three worked examples of `EXAMPLES.md`
+  §8–§10: words to numbers two ways, full ASCII as a type with a digit
+  parser, and an event type with a kernel the runtime pokes; sizes and
+  read-back values pinned.
 
 ### The measured values, reproduced
 
@@ -352,10 +357,7 @@ constructors of those names keeps real rows for them but lift and lower
 leave the names to the combinators; and when two names share a term
 (`dec` and `arith.dec`) lift prefers the unqualified, shorter one.
 
-## Decisions the specification left open
-
-Each of these is a place where the notes do not determine the answer;
-the interpretation chosen is the one that makes `EXAMPLES.md` work.
+## Decisions over the specification
 
 1. **(a) Case branches need the type declarations, so parsing is two
    pass.** A branch is `CName binder* body` and the binder count is the
@@ -654,6 +656,21 @@ the interpretation chosen is the one that makes `EXAMPLES.md` work.
     it (`generate.names_generation_adds`), so it stays a pass over the
     parsed program and still does not call `sp` undefined.
 
+55. **The prelude is `pair`, `hd`, `tl`, `nil`, `cons`, `zero`, `suc`.**
+    Decision 21 listed five; the numerals joined so that a program can
+    write Scott numerals without declaring `nat`. A program may still
+    define its own.
+56. **The capturing macro form `:=!` parses and is refused.** Decision 12
+    implements hygiene for `:=*`; the capturing form is recognized by the
+    lexer and the grammar and rejected by the expander with a named
+    error (`test_expand::test_capturing_macro_is_refused_clearly`). The
+    paper's grammar lists it; nothing stands behind it yet.
+57. **Macro expansion and the fuel policy are bounded, and the bounds are
+    normative.** Expansion stops with a named error after 100 nested
+    unfoldings on one path, at structural depth 256, or after 200,000
+    substitutions in one declaration; the elided-fuel policy starts at 8,
+    doubles, and caps at 4,096, reported as the timeout outcome.
+
 ## Discrepancies found in the specification
 
 ### Resolved in the specification
@@ -789,10 +806,11 @@ One more, reported against `SURFACE-LANGUAGE-DESIGN.md` §6b after step
 
 ### Still open
 
-Two points where step 5b could not follow the notes literally. Stated,
-not worked around.  (A third, §6b's level-0 reading of a declared type's
-constructors, is item 25 above: it was open for one round and is now
-fixed in the note.)
+One point where the implementation could not follow the notes literally.
+(Item 23 below was open for two rounds; `SURFACE-LANGUAGE-DESIGN.md` §5
+rule 3 now carries exactly the reading decision 48 implements, so it is
+resolved in the note and kept here for the record. Item 25 above was
+open for one round and is likewise fixed.)
 
 23. **§5 rule 3 read literally forbids the paper's own tower.** "A value
     of function type (a gate, a core, a supercombinator) … cannot be compared,

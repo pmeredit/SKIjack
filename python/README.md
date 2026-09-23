@@ -5,8 +5,8 @@ closed `{S,K,I}` terms, with the interpreter of the companion paper as
 its conformance target.
 
 The claim this package exists to support: **the abstraction is free, and
-term equality proves it.** The self-interpreter of Davis (2027) --- 618
-atoms of pure `{S,K,I}`, built by hand --- compiles from three lines of
+term equality proves it.** The self-interpreter of Davis (2027)---618
+atoms of pure `{S,K,I}`, built by hand---compiles from three lines of
 surface source to the same term, atom for atom. So do five more: the
 observability pair at 768 and 771, the blocking interpreters at 950 and
 1,066, and structural equality on encoded terms at 240.
@@ -62,13 +62,13 @@ out   = skijack.run_level1(exp.level1["answer"], 1_000_000)
 Everything this package raises for a bad program derives from
 `skijack.SkijackError`.
 
-## Three words
+## Definitions
 
-An **equation** `f x y = body` is what an author writes. A
-**supercombinator** is the closed, `Y`-tied term it compiles to --- the
-unit of naming, sharing, jetting and lifting. A **core** is the group an
-equation is declared in. Names resolve in a compile-time table and are
-gone before anything runs; there is no environment at run time.
+An author writes an **equation** `f x y = body`. The closed `Y`-tied
+term to which it compiles is the **supercombinator**, the unit of
+naming, sharing, jetting and lifting. The group an equation is declared
+in is a **core**. Names resolve in a compile-time table and are gone
+before anything runs; there is no environment at run time.
 
 ## Tests
 
@@ -86,8 +86,9 @@ itself.
 
 ## More
 
+The language is specified in `SPEC.md` at the repository root; `NOTES.md`
+beside this file is the decision log it was derived from.
+
 `NOTES.md` records what the suite proves, every open question the
-specification left and how it was answered, and the discrepancies found
-in the specification itself. The design notes in the parent repository
-are the specification proper: `DESIDERATA.md`, `SYNTAX.md`,
-`SURFACE-LANGUAGE-DESIGN.md`, `EXAMPLES.md`.
+specification left and how it was answered, and any discrepancies found
+in the original specification itself.

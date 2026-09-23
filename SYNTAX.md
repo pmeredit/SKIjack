@@ -134,30 +134,36 @@ constructors of `term5` and juxtaposition is `App`; outside it, `S`,
 `K`, `I` are always the level-0 combinators, which is why `omega` can
 share a file with the declaration.
 
-## 4. Grammar sketch
+## 4. Grammar
+
+*This is the grammar the parser implements, as `SPEC.md` §2 states it;
+the sketch that stood here listed a bare `NUMBER` atom, a postfix axis
+pick and cells of expressions, none of which survived implementation
+(`python/NOTES.md`, decisions 5 and 8).*
 
 ```
-program   := decl*
-decl      := type-decl | sig | equation | macro | core | def | run  -- equations may appear at top level
-run       := NAME '≔' [expr '⊢'] '<' expr '>' (SUB | '₍₎')   -- a level-1 declaration: quote and run,
-                                                              -- under the given interpreter or the default;
-                                                              -- ASCII: NAME := [expr |-] '<' expr '>' ('@' n | '@[]')
-type-decl := NAME '≡' ctor ('|' ctor)*        -- ASCII: NAME === ctor (| ctor)*
-ctor      := CNAME TYPE*                        -- CNAME capitalized; fields are types
-sig       := NAME ':' TYPE ('→' TYPE)*         -- optional; ASCII ->
+decl      := type-decl | sig | equation | macro | core | def | run
+run       := NAME ':=' [expr '|-'] '<' expr '>' ('@' NUMBER | '@[]')
+type-decl := NAME '===' ctor ('|' ctor)*
+ctor      := CNAME TYPE*                     -- CNAME capitalized; fields are types
+sig       := NAME ':' TYPE ('->' TYPE)*       -- optional; ignored by the expander
 equation  := NAME NAME* '=' expr             -- inside a core, or at top level
-core      := NAME NAME* '≔' '{' equation* '}'   -- parameters after the name
-macro     := NAME NAME* '≔*' expr | NAME NAME* '≔!' expr
+core      := NAME NAME* ':=' '{' equation* '}'   -- parameters after the name
+macro     := NAME NAME* ':=*' expr | NAME NAME* ':=!' expr
+def       := NAME ':=' expr
 expr      := app
 app       := atom+                           -- left-associative
-atom      := NAME | GLYPH | NUMBER | '(' expr ')'
+atom      := NAME | GLYPH | '(' expr ')'
            | '[' expr expr+ ']'              -- cell
-           | '<' expr '>'                    -- quote: a datum (also allowed nested inside a quotation)
-           | '∵' atom                        -- scry
-           | NUMBER '⊑'                      -- axis pick (postfix on the number)
-           | 'λ' NAME '.' expr
-           | expr '▹' '{' branch (';' branch)* '}'
-           | 'ns{' fact (',' fact)* '}'        -- namespace literal (ASCII: ns{ ... })
+           | '<' expr '>'                    -- quotation: a datum
+           | '?^' atom                       -- scry
+           | NUMBER '@' atom                 -- axis pick
+           | '\' NAME '.' expr
+           | expr '|>' '{' branch (';' branch)* '}'
+           | 'ns{' fact (',' fact)* '}'
+branch    := CNAME NAME* expr
+fact      := path '=>' expr
+path      := ('/' NAME)+
 ```
 The ASCII grammar is this grammar with the table's substitutions. Both
 parsers produce the same tree type; the tree has no lexicon field.

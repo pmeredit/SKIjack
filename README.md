@@ -7,6 +7,7 @@
 A supercombinator language over the $SKI$ combinatory logic and a graph-reduction runtime with jet-accelerated code to make it
 (marginally) viable.
 
+- `SPEC.md`: **the specification** — the language as implemented and tested, one rule per decision, with the decision and the test that pins it. Start here; the notes below are its history.
 - `DESIDERATA.md`: what the language must be, stated as twelve properties borrowed from nockasm's discipline, and the four tiers of exposure (primitives, combinators, supercombinators, macros).
 - `SYNTAX.md`: the surface direction: equations, cores, glyph-named combinators, two brackets, one grammar with two lexicons (ASCII and Unicode) related by a bijective token table, and the scry namespace discipline.
 - `SURFACE-LANGUAGE-DESIGN.md`: the kernel forms, the representation ABI (Scott pairs as cells, Nock axes over data, cores tied with `Y`), the compile rules, compile-time name resolution with no runtime environment, the standard library the runtime supplies at boot, and the quotation line that a theorem fixes.
