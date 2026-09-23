@@ -16,6 +16,9 @@ nowhere else, because no closed term quotes every live term; the
 language's job is to make that line visible rather than to pretend it
 isn't there.
 
+* N E Davis (2027, in review) A Self-Interpreter for $SKI$: Authoring Semantics for New Symbols. *Journal of Functional Programming*.  doi:10.5281/zenodo.22867958
+* N E Davis (2027a, in review) SKIjack: A Low-Level Native Language for the $SKI$ Combinator.  *The Art, Science, and Engineering of Programming*.
+
 ## Install
 
 ```sh
