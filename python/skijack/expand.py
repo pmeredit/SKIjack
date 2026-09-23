@@ -623,15 +623,21 @@ def expand_program(program: A.Program, env: Optional[Environment] = None,
     for nm in PRELUDE_NAMES:
         backend[nm] = nm
         used.add(nm)
-    env.define_rule("pair", ("x", "y", "c"), K_(v("c"), v("x"), v("y")))
-    env.define_rule("hd", ("p",), K_(v("p"), a("K")))
-    env.define_rule("tl", ("p",), K_(v("p"), K_(a("K"), a("I"))))
-    env.define_rule("nil", ("n", "c"), v("n"))
-    env.define_rule("cons", ("h", "t", "n", "c"), K_(v("c"), v("h"), v("t")))
+    # The binders are \x00-prefixed sentinels, which no source program can
+    # spell: a program that named a combinator `x` or `p` collided with the
+    # rule's own binder inside the host's expansion of a cell or a pick.
+    # Abstraction removes binders, so the emitted terms are unchanged.
+    _x, _y, _c, _p = "\x00x", "\x00y", "\x00c", "\x00p"
+    _h, _t, _n, _z, _sc = "\x00h", "\x00t", "\x00n", "\x00z", "\x00sc"
+    env.define_rule("pair", (_x, _y, _c), K_(v(_c), v(_x), v(_y)))
+    env.define_rule("hd", (_p,), K_(v(_p), a("K")))
+    env.define_rule("tl", (_p,), K_(v(_p), K_(a("K"), a("I"))))
+    env.define_rule("nil", (_n, _c), v(_n))
+    env.define_rule("cons", (_h, _t, _n, _c), K_(v(_c), v(_h), v(_t)))
     # Scott numerals, the fuel convention (SURFACE-LANGUAGE-DESIGN.md §2
     # and §4): a fuel numeral is what a generated loop peels.
-    env.define_rule("zero", ("z", "sc"), v("z"))
-    env.define_rule("suc", ("n", "z", "sc"), K_(v("sc"), v("n")))
+    env.define_rule("zero", (_z, _sc), v(_z))
+    env.define_rule("suc", (_n, _z, _sc), K_(v(_sc), v(_n)))
 
     # --- backend names.  Program-level names (constructors, top-level
     # equations, definitions, the prelude) share one namespace; a core's equations
