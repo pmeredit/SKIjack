@@ -11,7 +11,7 @@
   ],
   "repository": {
     "comment": {
-      "match": "(--|\u234d).*$",
+      "match": "(--|\u235d).*$",
       "name": "comment.line.skijack"
     },
     "typedecl-head": {
@@ -24,11 +24,10 @@
     },
     "definition-head": {
       "comment": "name binders (= | := | :=* | :=! | :)   equation, definition, core, macro, signature",
-      "match": "^\\s*([a-z_][A-Za-z0-9_'\u2080-\u2089]*)((?:\\s+[a-z_][A-Za-z0-9_'\u2080-\u2089]*)*)\\s*(:=\\*|\u2254\\*|:=!|\u2254!|:=|\u2254|=(?!=)|:(?!=))",
+      "match": "^\\s*([a-z_][A-Za-z0-9_'\u2080-\u2089]*)((?:\\s+[a-z_][A-Za-z0-9_'\u2080-\u2089]*)*)(?=\\s*(?::=\\*|\u2254\\*|:=!|\u2254!|:=|\u2254|=(?!=)|:(?!=)))",
       "captures": {
         "1": { "name": "entity.name.function.skijack" },
-        "2": { "name": "variable.parameter.skijack" },
-        "3": { "name": "keyword.operator.definition.skijack" }
+        "2": { "name": "variable.parameter.skijack" }
       }
     },
     "expression": {
