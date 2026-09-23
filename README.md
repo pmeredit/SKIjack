@@ -40,6 +40,6 @@ each carries a status header saying so. The compiler is implemented; the runtime
 
 The suite is self-contained: the four oracle scripts from
 `artifact-metacircular-ski` are vendored under `python/tests/artifact/` (provenance in the
-README there), so all 854 tests run with no setup. To check against a live checkout of the
+README there), so all 855 tests run with no setup. To check against a live checkout of the
 artifact instead, set `SKIJACK_ARTIFACT_DIR` to it. CI runs the suite on Python 3.10–3.13.
 

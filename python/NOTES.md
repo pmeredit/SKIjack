@@ -12,7 +12,7 @@ decisions below, is `SPEC.md` there.
 `python3 -m pytest -q` from `python/`:
 
 ```
-854 passed
+855 passed
 ```
 
 * `tests/test_lexicon.py` — the token table is checked at import as a
