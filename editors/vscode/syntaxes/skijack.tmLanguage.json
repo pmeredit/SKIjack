@@ -1,0 +1,138 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "SKIjack",
+  "scopeName": "source.skijack",
+  "fileTypes": ["ski"],
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#typedecl-head" },
+    { "include": "#definition-head" },
+    { "include": "#expression" }
+  ],
+  "repository": {
+    "comment": {
+      "match": "(--|\u234d).*$",
+      "name": "comment.line.skijack"
+    },
+    "typedecl-head": {
+      "comment": "name === Ctor fields | Ctor ...   (lexicon.py: TYPEDECL is === or \u2261)",
+      "match": "^\\s*([a-z_][A-Za-z0-9_'\u2080-\u2089]*)\\s*(===|\u2261)",
+      "captures": {
+        "1": { "name": "entity.name.type.skijack" },
+        "2": { "name": "keyword.operator.typedecl.skijack" }
+      }
+    },
+    "definition-head": {
+      "comment": "name binders (= | := | :=* | :=! | :)   equation, definition, core, macro, signature",
+      "match": "^\\s*([a-z_][A-Za-z0-9_'\u2080-\u2089]*)((?:\\s+[a-z_][A-Za-z0-9_'\u2080-\u2089]*)*)\\s*(:=\\*|\u2254\\*|:=!|\u2254!|:=|\u2254|=(?!=)|:(?!=))",
+      "captures": {
+        "1": { "name": "entity.name.function.skijack" },
+        "2": { "name": "variable.parameter.skijack" },
+        "3": { "name": "keyword.operator.definition.skijack" }
+      }
+    },
+    "expression": {
+      "patterns": [
+        { "include": "#comment" },
+        { "include": "#quotation" },
+        { "include": "#namespace" },
+        { "include": "#scry" },
+        { "include": "#path" },
+        { "include": "#axis" },
+        { "include": "#fuel" },
+        { "include": "#operators" },
+        { "include": "#lambda" },
+        { "include": "#isa" },
+        { "include": "#tier1" },
+        { "include": "#constructor" },
+        { "include": "#number" },
+        { "include": "#punctuation" }
+      ]
+    },
+    "quotation": {
+      "comment": "<t> is compile-time quotation; quotations nest. Fuel follows the close.",
+      "begin": "<",
+      "end": ">",
+      "beginCaptures": { "0": { "name": "punctuation.definition.quotation.begin.skijack" } },
+      "endCaptures":   { "0": { "name": "punctuation.definition.quotation.end.skijack" } },
+      "contentName": "meta.quotation.skijack",
+      "patterns": [ { "include": "#expression" } ]
+    },
+    "namespace": {
+      "match": "\\b(ns)(\\{)",
+      "captures": {
+        "1": { "name": "keyword.other.namespace.skijack" },
+        "2": { "name": "punctuation.section.namespace.begin.skijack" }
+      }
+    },
+    "scry": {
+      "match": "\\?\\^|\u2235",
+      "name": "keyword.operator.scry.skijack"
+    },
+    "path": {
+      "comment": "('/' NAME)+, the only place '/' occurs",
+      "match": "(/[A-Za-z_][A-Za-z0-9_'\u2080-\u2089]*)+",
+      "name": "string.unquoted.path.skijack"
+    },
+    "axis": {
+      "comment": "2@p / 2\u2291p: projection by Nock axis",
+      "match": "([0-9]+)(@|\u2291)",
+      "captures": {
+        "1": { "name": "constant.numeric.axis.skijack" },
+        "2": { "name": "keyword.operator.axis.skijack" }
+      }
+    },
+    "fuel": {
+      "comment": "@n or @[] in ASCII; subscript digits or \u208d\u208e in Unicode",
+      "match": "@[0-9]+|@\\[\\]|[\u2080-\u2089]+|\u208d\u208e",
+      "name": "constant.numeric.fuel.skijack"
+    },
+    "operators": {
+      "patterns": [
+        { "match": ":=\\*|\u2254\\*|:=!|\u2254!", "name": "keyword.operator.macro.skijack" },
+        { "match": "===|\u2261", "name": "keyword.operator.typedecl.skijack" },
+        { "match": ":=|\u2254", "name": "keyword.operator.assignment.skijack" },
+        { "match": "\\|-|\u22a2", "name": "keyword.operator.interpreter.skijack" },
+        { "match": "\\|>|\u25b9", "name": "keyword.control.case.skijack" },
+        { "match": "=>|\u21a6", "name": "keyword.operator.fact.skijack" },
+        { "match": "->|\u2192", "name": "keyword.operator.arrow.skijack" },
+        { "match": "=(?!=)", "name": "keyword.operator.equation.skijack" },
+        { "match": "\\|", "name": "keyword.operator.alternative.skijack" },
+        { "match": ":", "name": "keyword.operator.signature.skijack" }
+      ]
+    },
+    "lambda": {
+      "match": "\\\\|\u03bb",
+      "name": "keyword.operator.lambda.skijack"
+    },
+    "isa": {
+      "comment": "the instruction set; reserved at level 0",
+      "match": "\\b[SKI]\\b",
+      "name": "keyword.other.isa.skijack"
+    },
+    "tier1": {
+      "comment": "identifier glyphs: names, may be shadowed by a declaration",
+      "match": "\\b(B|C|W|Y|EQ)\\b|\u2218|\u21c4|\u22c8|\u03a5|\u225f",
+      "name": "support.function.tier1.skijack"
+    },
+    "constructor": {
+      "comment": "CNAME: capitalized",
+      "match": "\\b[A-Z][A-Za-z0-9_'\u2080-\u2089]*\\b",
+      "name": "entity.name.type.constructor.skijack"
+    },
+    "number": {
+      "match": "\\b[0-9]+\\b",
+      "name": "constant.numeric.skijack"
+    },
+    "punctuation": {
+      "patterns": [
+        { "match": "[\\[\\]]", "name": "punctuation.section.cell.skijack" },
+        { "match": "[{}]", "name": "punctuation.section.block.skijack" },
+        { "match": "[()]", "name": "punctuation.section.group.skijack" },
+        { "match": ";", "name": "punctuation.separator.branch.skijack" },
+        { "match": ",", "name": "punctuation.separator.fact.skijack" },
+        { "match": "\\.", "name": "punctuation.accessor.qualifier.skijack" }
+      ]
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "skijack",
+  "displayName": "SKIjack",
+  "description": "Syntax highlighting for SKIjack (.ski), both the ASCII and Unicode lexicons.",
+  "version": "0.1.0",
+  "publisher": "sigilante",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/sigilante/SKIjack" },
+  "engines": { "vscode": "^1.80.0" },
+  "categories": ["Programming Languages"],
+  "contributes": {
+    "languages": [{
+      "id": "skijack",
+      "aliases": ["SKIjack", "skijack", "ski"],
+      "extensions": [".ski"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "skijack",
+      "scopeName": "source.skijack",
+      "path": "./syntaxes/skijack.tmLanguage.json"
+    }]
+  }
+}
