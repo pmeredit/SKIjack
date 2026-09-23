@@ -219,3 +219,17 @@ def test_every_output_term_is_closed_over_S_K_I(built):
     for key, e in built.items():
         for name, t in e.terms.items():
             assert free_vars(t) <= {"S", "K", "I"}, (key, name)
+
+
+def test_a_program_may_name_a_combinator_after_a_prelude_binder():
+    """The prelude's rules once bound ``x``, ``y``, ``c`` (pair) and ``p``
+    (hd, tl) by those names, so a program combinator called ``x`` collided
+    with the binder inside the host's expansion of a cell.  The binders
+    are sentinels now; the terms are unchanged, which the pinned sizes
+    elsewhere in this suite prove."""
+    for src in ("nat === Zero | Suc nat\nx := [Zero Zero]\n",
+                "nat === Zero | Suc nat\np := 2@[Zero Zero]\n",
+                "nat === Zero | Suc nat\nc := 3@[Zero (Suc Zero)]\n",
+                "nat === Zero | Suc nat\nf n = [n n]\nq := f Zero\n"):
+        e = expand_program(parse_ascii(src))
+        assert all(name in e.terms for name in ("x", "p", "c", "f", "q") if name in src.split())

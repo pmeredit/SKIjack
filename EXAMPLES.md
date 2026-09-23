@@ -303,8 +303,8 @@ path ≡ Nil | Cons word path
 bool ≡ PTrue | PFalse
 
 oanswer ≡ OJust term5 | ONothing | ONotYet
-outcome ≡ SteppedN term5 | DoneN | ErrdN | PendingN path
-result ≡ RValN term5 | RErrN | RTimeN | RBlockN path
+outcome ≡ SteppedN term5 | DoneN | ErrdN | PendingN term5
+result ≡ RValN term5 | RErrN | RTimeN | RBlockN term5
 
 pAnd p q = p q PFalse
 pKKF = K (K PFalse)
@@ -341,8 +341,8 @@ path === Nil | Cons word path
 bool === PTrue | PFalse
 
 oanswer === OJust term5 | ONothing | ONotYet
-outcome === SteppedN term5 | DoneN | ErrdN | PendingN path
-result === RValN term5 | RErrN | RTimeN | RBlockN path
+outcome === SteppedN term5 | DoneN | ErrdN | PendingN term5
+result === RValN term5 | RErrN | RTimeN | RBlockN term5
 
 pAnd p q = p q PFalse
 pKKF = K (K PFalse)

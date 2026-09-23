@@ -12,7 +12,7 @@ decisions below, is `SPEC.md` there.
 `python3 -m pytest -q` from `python/`:
 
 ```
-789 passed
+855 passed
 ```
 
 * `tests/test_lexicon.py` — the token table is checked at import as a
@@ -62,6 +62,10 @@ decisions below, is `SPEC.md` there.
 * `tests/test_dictionary.py` — the hash, the table, `lower ∘ lift = id`
   on every corpus term, and lift recovering the interpreter's own names.
 * `tests/test_cli.py` — the package API and every CLI flag.
+* `tests/test_types.py` — Stage B: every compilable corpus program is
+  well typed and compiles to the same terms with the check on or off;
+  the refusals of `SPEC.md` §9b, each with its message; the blocked
+  payload's old spelling refused.
 * `tests/test_examples.py` — the three worked examples of `EXAMPLES.md`
   §8–§10: words to numbers two ways, full ASCII as a type with a digit
   parser, and an event type with a kernel the runtime pokes; sizes and
@@ -264,7 +268,7 @@ is the whole reason the outcome type grew.
 
 **Blocking.** `wfN` answers three ways, so its outcome and result each
 grow a fourth constructor carrying the path that blocked —
-`PendingN path` maps to `RBlockN path`, the constructor at the same
+`PendingN term5` maps to `RBlockN term5`, the constructor at the same
 position handed the same payload. `run.run_with_namespace` is
 `scry_namespace.py`'s resume loop: an append-only namespace, the program
 re-run from scratch each round, the blocked path decoded by probe and
@@ -567,7 +571,10 @@ leave the names to the combinators; and when two names share a term
 37. **Outcome-shaped now allows other constructors to carry fields.** A
     type is outcome-shaped when exactly one constructor carries a single
     field *of the object type*; the rest may be nullary or carry
-    something else, which is what lets `PendingN path` exist.
+    something else, which is what lets `PendingN` exist. (Since Stage B the
+    payload is declared as what it holds, the encoded path, so it is
+    `PendingN term5`; the carrier is the *first* single-object-field
+    constructor, and the blocking constructor the second payload one.)
 38. **The loop mapping, extended**: an outcome constructor carrying a
     payload maps to the result constructor at the **same position**,
     which must carry as many fields, and is handed the same payload
@@ -670,6 +677,31 @@ leave the names to the combinators; and when two names share a term
     unfoldings on one path, at structural depth 256, or after 200,000
     substitutions in one declaration; the elided-fuel policy starts at 8,
     doubles, and caps at 4,096, reported as the timeout outcome.
+
+58. **Stage B is one rule, oriented.** A datum may be applied; a function
+    is never a datum. Unification is `unify(expected, given)`: a given sum
+    type meeting an expected arrow expands to its Scott scheme, an expected
+    sum type meeting a given arrow is the error. `Zero` compiles to `K`, so
+    the orientation is what makes `Suc K` an error at all.
+59. **Case forms are typed nominally; hand-applied data structurally.**
+    `e |> {...}` gives the scrutinee the declared type and the binders the
+    field types. A datum applied to its continuations by hand, the
+    interpreters' idiom, is typed by the continuations, and recursion over
+    it yields a cyclic type; unification is equirecursive. This types
+    `omega` too, so no `raw` escape exists.
+60. **Arrows carry provenance.** An arrow a binder acquires by being
+    applied is an *elimination* arrow, datum-compatible, and remembers the
+    declared type it is checked against; an arrow a value was built with is
+    a function. Without this the generated `loop1`, which passes `m` to
+    `step` before writing `RVal m`, was refused -- the order-dependence of
+    a plain oriented unifier, found in the reference interpreter itself.
+61. **The blocked payload is the object type.** `PendingN term5`, not
+    `PendingN path`: a level-1 path is an encoded term. The carrier is the
+    first single-object-field constructor, the blocking constructor the
+    second payload one (`generate._carrier`, `run.block_constructor`).
+62. **The prelude's rule binders are sentinels.** `pair` bound `x`, `y`,
+    `c` by those names, so a program combinator named `x` collided with the
+    binder inside the host's expansion of a cell; found by Stage B's tests.
 
 ## Discrepancies found in the specification
 
@@ -822,7 +854,9 @@ open for one round and is likewise fixed.)
     namespace fact and at a scry path, and the quotation body is checked
     by §6b's tables instead (decision 48). §5 would be clearer if it said
     so.
-24. **`EQ` is in the token table with nothing behind it.** `SYNTAX.md`
+24. **`EQ` is in the token table with nothing behind it.** (Stage B now
+    constrains its operands to data whatever the program defines it as;
+    the definition is still the program's.) `SYNTAX.md`
     §2 lists `≟`/`EQ` as a Tier 1 entry and §5 builds four rules around
     it, but no standard subject supplies it, so a program that writes
     `EQ` gets an unresolved name unless it defines one. The corpus
