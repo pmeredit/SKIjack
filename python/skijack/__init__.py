@@ -21,6 +21,7 @@ from .run import (run_level0, run_level1, run_policy, run_with_namespace,
                   make_resolver, peel, decode, RunError)
 from .check import (check, check_program, CheckError, ArityError, CaseError,
                     DataError, InterfaceError, SymbolTableError, ScopeError)
+from .typecheck import typecheck, typecheck_program, TypeMismatchError
 from .dictionary import (Dictionary, Entry, from_expansion, lift, lower,
                          structural_hash, VERSION as DICTIONARY_VERSION)
 
@@ -57,6 +58,7 @@ __all__ = [
     "make_resolver", "peel", "decode", "RunError",
     "check", "check_program", "CheckError", "ArityError", "CaseError",
     "DataError", "InterfaceError", "SymbolTableError", "ScopeError",
+    "typecheck", "typecheck_program", "TypeMismatchError",
     "Dictionary", "Entry", "from_expansion", "lift", "lower",
     "structural_hash", "DICTIONARY_VERSION",
     "Prober", "fast_reduce", "__version__",

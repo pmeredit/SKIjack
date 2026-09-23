@@ -568,6 +568,9 @@ def expand_program(program: A.Program, env: Optional[Environment] = None,
         _check(program, PRELUDE_NAMES)
     if generate_forms:
         program = _generate(program)
+    if check:
+        from .typecheck import typecheck   # Stage B, over the generated program
+        typecheck(program, PRELUDE_NAMES, generated=generate_forms)
 
     # --- collect declarations
     types: Dict[str, A.TypeDecl] = {}

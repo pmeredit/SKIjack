@@ -12,6 +12,7 @@ import sys
 from aviary_kernel.terms import pretty
 
 from .check import check_program
+from .typecheck import typecheck_program
 from .errors import SkijackError
 from .dictionary import from_expansion, lift, structural_hash
 from .expand import PRELUDE_NAMES, expand_program
@@ -83,12 +84,18 @@ def _run(args) -> int:
 
     problems = check_program(program, PRELUDE_NAMES)
     if args.check:
-        if not problems:
-            print(f"{args.file}: Stage A clean")
-            return 0
-        for p in problems:
-            print(f"{args.file}: {p}", file=sys.stderr)
-        return 1
+        if problems:
+            for p in problems:
+                print(f"{args.file}: {p}", file=sys.stderr)
+            return 1
+        print(f"{args.file}: Stage A clean")
+        problems = typecheck_program(program, PRELUDE_NAMES)
+        if problems:
+            for p in problems:
+                print(f"{args.file}: {p}", file=sys.stderr)
+            return 1
+        print(f"{args.file}: Stage B clean")
+        return 0
     if problems:
         for p in problems:
             print(f"{args.file}: {p}", file=sys.stderr)
