@@ -12,7 +12,7 @@ decisions below, is `SPEC.md` there.
 `python3 -m pytest -q` from `python/`:
 
 ```
-789 passed
+854 passed
 ```
 
 * `tests/test_lexicon.py` — the token table is checked at import as a
@@ -62,6 +62,10 @@ decisions below, is `SPEC.md` there.
 * `tests/test_dictionary.py` — the hash, the table, `lower ∘ lift = id`
   on every corpus term, and lift recovering the interpreter's own names.
 * `tests/test_cli.py` — the package API and every CLI flag.
+* `tests/test_types.py` — Stage B: every compilable corpus program is
+  well typed and compiles to the same terms with the check on or off;
+  the refusals of `SPEC.md` §9b, each with its message; the blocked
+  payload's old spelling refused.
 * `tests/test_examples.py` — the three worked examples of `EXAMPLES.md`
   §8–§10: words to numbers two ways, full ASCII as a type with a digit
   parser, and an event type with a kernel the runtime pokes; sizes and
@@ -674,6 +678,31 @@ leave the names to the combinators; and when two names share a term
     substitutions in one declaration; the elided-fuel policy starts at 8,
     doubles, and caps at 4,096, reported as the timeout outcome.
 
+58. **Stage B is one rule, oriented.** A datum may be applied; a function
+    is never a datum. Unification is `unify(expected, given)`: a given sum
+    type meeting an expected arrow expands to its Scott scheme, an expected
+    sum type meeting a given arrow is the error. `Zero` compiles to `K`, so
+    the orientation is what makes `Suc K` an error at all.
+59. **Case forms are typed nominally; hand-applied data structurally.**
+    `e |> {...}` gives the scrutinee the declared type and the binders the
+    field types. A datum applied to its continuations by hand, the
+    interpreters' idiom, is typed by the continuations, and recursion over
+    it yields a cyclic type; unification is equirecursive. This types
+    `omega` too, so no `raw` escape exists.
+60. **Arrows carry provenance.** An arrow a binder acquires by being
+    applied is an *elimination* arrow, datum-compatible, and remembers the
+    declared type it is checked against; an arrow a value was built with is
+    a function. Without this the generated `loop1`, which passes `m` to
+    `step` before writing `RVal m`, was refused -- the order-dependence of
+    a plain oriented unifier, found in the reference interpreter itself.
+61. **The blocked payload is the object type.** `PendingN term5`, not
+    `PendingN path`: a level-1 path is an encoded term. The carrier is the
+    first single-object-field constructor, the blocking constructor the
+    second payload one (`generate._carrier`, `run.block_constructor`).
+62. **The prelude's rule binders are sentinels.** `pair` bound `x`, `y`,
+    `c` by those names, so a program combinator named `x` collided with the
+    binder inside the host's expansion of a cell; found by Stage B's tests.
+
 ## Discrepancies found in the specification
 
 ### Resolved in the specification
@@ -825,7 +854,9 @@ open for one round and is likewise fixed.)
     namespace fact and at a scry path, and the quotation body is checked
     by §6b's tables instead (decision 48). §5 would be clearer if it said
     so.
-24. **`EQ` is in the token table with nothing behind it.** `SYNTAX.md`
+24. **`EQ` is in the token table with nothing behind it.** (Stage B now
+    constrains its operands to data whatever the program defines it as;
+    the definition is still the program's.) `SYNTAX.md`
     §2 lists `≟`/`EQ` as a Tier 1 entry and §5 builds four rules around
     it, but no standard subject supplies it, so a program that writes
     `EQ` gets an unresolved name unless it defines one. The corpus

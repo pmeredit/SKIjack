@@ -1,6 +1,6 @@
 # SKIjack: the language specification
 
-## Version 0.1.0
+## Version 0.2.0
 
 This document states the SKIjack language as the reference implementation
 (`python/skijack`) compiles it confirmed by its test suite. Every rule
@@ -195,8 +195,11 @@ declaration, each reported as a named error rather than a hang.
 
 ### 3.6 Signatures
 
-`name : T -> T …` is parsed and kept on the tree and ignored by the
-expander.
+`name : T -> T …` is parsed and kept on the tree, ignored by the
+expander, and checked by Stage B (§9b): the inferred type must have the
+declared one as an instance. A signature names declared types only;
+type variables and type applications are not spellable in one
+(`test_types::test_a_signature_is_checked`).
 
 ## 4. Expressions and the representation ABI
 
@@ -238,10 +241,10 @@ and a program's own definition of a prelude name replaces the prelude's;
 then a Tier 1 built-in. Anything else is unresolved, a checker error
 (§9 f); free variables do not exist at runtime.
 
-`EQ` is in the token table as the name of equality on data and the
-checker keys its data rule on that name (§9 c), **but no definition
-stands behind it**: a program that uses `EQ` must define it, as the
-corpus defines `EQ5`. It belongs to the standard subject, which is
+`EQ` is in the token table as the name of equality on data and both
+checkers key their data rules on that name (§9 c, §9b), **but no
+definition stands behind it**: a program that uses `EQ` must define it,
+as the corpus defines `EQ5`. It belongs to the standard subject, which is
 unbuilt (§11).
 
 ## 6. Levels, quotation and fuel
@@ -298,8 +301,11 @@ for atom (`test_interpreter`, `test_scry`).
   (`test_generate::test_object_type_is_found_by_shape` and the three
   refusal tests beside it). A program with no such type generates
   nothing.
-- **`O` and `R`.** A type is *outcome-shaped* when exactly one of its
-  constructors carries a single field of the object type. Of the
+- **`O` and `R`.** A type is *outcome-shaped* when one of its
+  constructors carries a single field of the object type; the first such
+  constructor is the carrier, and a later one is a payload constructor
+  (`PendingN term5`: the blocked path, declared as what it holds, since a
+  level-1 path is an encoded term). Of the
   outcome-shaped declarations, the **last two** in declaration order are
   the step outcome `O` and the result `R`; a single one serves
   as both (the Maybe shape); an earlier one is the oracle answer type;
@@ -342,8 +348,11 @@ for atom (`test_interpreter`, `test_scry`).
   `/a/b` denotes `Cons A (Cons B Nil)`, each segment naming the `seg`
   constructor spelled with its first letter capitalized; the segment
   constructors must be nullary; an unknown segment is an error. Only
-  path *literals* are accepted; segment payloads and path-typed
-  expressions are refused until the type stage.
+  path *literals* are accepted, and the type stage does not change that:
+  a scry path and a namespace key are quoted at compile time, and a
+  path-typed *expression* is a level-0 term whose value exists only at
+  run time, so accepting it would be reification. Segment payloads are
+  refused likewise.
 - **A namespace literal** `ns{ /p => <q>, … }` compiles to a flat chain of
   `EQ5` comparisons in fact order, answering the oracle type's hit at
   the first match and its "not yet" otherwise. It requires a
@@ -353,7 +362,9 @@ for atom (`test_interpreter`, `test_scry`).
   position (about fifteen thousand contractions per probe on the
   reference reducer): a namespace literal is an association list.
 - **Blocking.** Under an interpreter whose outcome and result types
-  carry a path-bearing constructor, a scry with no fact blocks and the
+  carry a second payload constructor — `PendingN term5` mapping to
+  `RBlockN term5`, the encoded path that blocked — a scry with no fact
+  blocks and the
   driver re-runs the program from scratch under a namespace that only
   grows; a fact once learned is never withdrawn, which is what makes
   replay sound. Fuel is spent again on each replay.
@@ -379,12 +390,72 @@ term is the same with the check on or off
 | e | inside a quotation, a name that is neither a constructor of the object type nor a level-0 name; at level 0 every declared type's constructors are ordinary and only the ISA is reserved | `SymbolTableError` |
 | f | unresolved names; duplicate declarations | `ScopeError` |
 
-The data rule establishes one direction only: no accepted program holds
-a provable function in a data position. With binders untyped, a bound
-variable's kind is unknown, so `f x = EQ x <K>` with `g := f I` is
-accepted; the second stage is to catch it. A quotation's body is checked
-by the symbol tables, not the data rule, because level-1 codegen is
-expand-then-encode and quotes supercombinators by design.
+Stage A's data rule establishes one direction only: no accepted program
+holds a provable function in a data position. With binders untyped here,
+a bound variable's kind is unknown, so `f x = EQ x PTrue` with
+`g := f K` passes Stage A; Stage B catches it (§9b). A quotation's body
+is checked by the symbol tables, not the data rule, because level-1
+codegen is expand-then-encode and quotes supercombinators by design.
+
+## 9b. Stage B: the type discipline
+
+Stage B runs after generation and before codegen, over macro-expanded
+bodies, and like Stage A it collects every problem, raises once with
+class `TypeMismatchError`, rejects and never rewrites
+(`test_types::test_type_checking_never_changes_the_terms`). It is
+Hindley–Milner over the declared sum types and function types, with one
+rule that is the whole discipline:
+
+**A datum may be applied; a function is never a datum.** Every declared
+type is Scott-encoded, so a value of type `T` *is* its own case analysis
+and may be applied to one continuation per constructor. Unification is
+therefore oriented, `unify(expected, given)`: a *given* sum type meeting
+an *expected* arrow expands to its Scott scheme, and an *expected* sum
+type meeting a *given* arrow is the error. `Zero` compiles to `K`, so a
+symmetric rule would accept `Suc K`; the orientation is what makes it an
+error (`test_types::test_a_function_is_not_a_datum`).
+
+- **Case forms are typed nominally.** In `e |> { C b… body; … }` the
+  scrutinee has the branches' declared type, each binder has its
+  declared field type, and the branches agree on one result. `add m n =
+  n |> { Zero m; Suc k (Suc (add m k)) }` is `nat -> nat -> nat`, and
+  `add K Zero` is an error (`test_types::test_a_case_gives_its_scrutinee_the_declared_type`).
+- **Elimination arrows.** A datum applied by hand to its continuations,
+  as the interpreters do (`args h (rb1 rb h)`), is typed by those
+  continuations. An arrow a *binder* acquires by being applied is an
+  *elimination* arrow: datum-compatible, and once checked against a
+  declared type it remembers it. An arrow a value was *built* with — a
+  lambda, a combinator, a partially applied constructor — is a function.
+  So a binder may be used as a datum and as its own case in either
+  order, and a function passed where either use expected a datum is
+  refused in either order (`test_types::test_a_binder_used_as_case_then_as_datum_still_refuses_a_function`
+  and its mirror).
+- **Recursion over a datum applied by hand yields a cyclic type**, and
+  unification is equirecursive, so those are admitted — as is
+  `omega = S I I (S I I)`, with no escape hatch
+  (`test_types::test_omega_is_typed_without_an_escape`). The nominal
+  form is the stronger check, and the one to write when the check is
+  wanted.
+- **The operands of `EQ`** carry a data constraint: a type variable so
+  marked may be bound to a sum type and never to a built arrow. That is
+  how `f x = EQ x PTrue` with `g := f K` is refused although `x` is a
+  bare binder (`test_types::test_an_operand_of_eq_may_not_be_a_function_through_a_binder`).
+- **Level 1.** A quotation `<t>` has the program's object type; a
+  namespace literal has type `object -> answer`; a run `interp p… |-
+  <t>@n` applies the interpreter's loop to its parameters, then to
+  `fuel` and the datum, and has the result type `R`.
+- **The prelude and the ISA** have schemes: `pair : a -> b -> cell a b`,
+  `hd`, `tl`, `nil : list a`, `cons`, `zero : fuel`, `suc`; `S`, `K`,
+  `I`, `B`, `C`, `W`, `Y` their standard ones. An axis pick projects
+  through nested cells and nothing else
+  (`test_types::test_an_axis_picks_into_a_cell_and_nothing_else`).
+- **Signatures** are checked (§3.6). **Every compilable corpus program
+  type-checks unchanged** (`test_types::test_every_compilable_corpus_file_is_well_typed`).
+
+What Stage B does not do: a declared type has no parameters and a
+signature cannot name a type variable, so polymorphism is inferred and
+never written; the standard subject is still unbuilt, so `EQ` still has
+to be defined by the program.
 
 ## 10. The dictionary
 
@@ -416,8 +487,10 @@ Stated explicitly:
 - there is no integer type (§4), no standard subject and therefore no
   `EQ` and no shared quoted library — a name used twice inside one
   quotation is duplicated in the datum (§5, §6);
-- the type stage (Stage B) does not exist: binders are untyped, and
-  signatures are ignored.
+- a declared type has no parameters, and a signature names declared
+  types only (§9b); the pre-0.2.0 spelling of a blocked payload,
+  `PendingN path`, is refused, since what it holds is an encoded term
+  (§7, `test_types::test_the_blocked_payload_is_declared_as_what_it_holds`).
 
 ## 12. Laws the implementation is held to
 
@@ -428,7 +501,9 @@ For every corpus program `P` and each lexicon `L`, with `M` the other:
   (`test_roundtrip`).
 - `expand ∘ render = lower`: rendering is canonical.
 - `lower ∘ lift = id` on every compiled term (`test_dictionary`).
-- Checking is erasure: expansion is the same with the checker on or off.
+- Checking is erasure, Stage A and Stage B alike: expansion is the same
+  with the checkers on or off (`test_check::test_checking_never_changes_the_terms`,
+  `test_types::test_type_checking_never_changes_the_terms`).
 - Every emitted term is closed over `{S, K, I}`.
 - Values are read behaviourally — by applying a term to fresh marker
   atoms and observing which comes back — never by inspecting combinator
