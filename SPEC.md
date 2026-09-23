@@ -27,7 +27,7 @@ Four things a second implementation must agree on (`python/skijack/abi.py`):
 
 Every compiled term is a closed term over `{S, K, I}`: no free
 variables, no environment, no runtime name resolution. The expander
-refuses to emit anything else (`test_expand::test_every_output_term_is_closed_over_ski`).
+refuses to emit anything else (`test_expand::test_every_output_term_is_closed_over_S_K_I`).
 
 ## 1. Lexicon
 
@@ -227,10 +227,14 @@ expander.
 ## 5. Names and tiers
 
 Names resolve in a compile-time table and are gone before anything runs.
-The order of resolution is: the enclosing equation's binders, the core's
-sibling equations, program-level declarations, then the prelude and
-Tier 1. An unresolved name is a checker error (§9 f); free variables do
-not exist at runtime.
+A binder of the enclosing equation (or a core parameter) shadows
+everything, since it stays a variable until bracket abstraction removes
+it. Otherwise a name resolves, in this order: `S`, `K`, `I` to the ISA,
+unconditionally; then a sibling equation of the enclosing core; then a
+program-level name — declarations and the prelude share one namespace,
+and a program's own definition of a prelude name replaces the prelude's;
+then a Tier 1 built-in. Anything else is unresolved, a checker error
+(§9 f); free variables do not exist at runtime.
 
 `EQ` is in the token table as the name of equality on data and the
 checker keys its data rule on that name (§9 c), **but no definition
@@ -437,7 +441,7 @@ For every corpus program `P` and each lexicon `L`, with `M` the other:
 
 ## 13. A complete program
 
-Everything above, in twelve lines that compile to the paper's base
+Everything above, in eight lines that compile to the paper's base
 interpreter and run a term under it:
 
 ```
